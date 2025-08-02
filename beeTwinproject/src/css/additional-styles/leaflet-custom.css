@@ -1,0 +1,35 @@
+/* Custom styles for Leaflet map */
+.leaflet-container {
+    height: 100%;
+    width: 100%;
+    border-radius: 0.5rem;
+}
+
+.leaflet-popup-content {
+    font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+    padding: 4px;
+}
+
+.leaflet-popup-content h3 {
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+/* BeeTwin theme colors for markers */
+.bee-marker-icon {
+    background-color: #f59e0b;
+    /* amber-500 */
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+}
+
+.bee-marker-icon.warning {
+    background-color: #ef4444;
+    /* red-500 */
+}
+
+.bee-marker-icon.inactive {
+    background-color: #6b7280;
+    /* gray-500 */
+}

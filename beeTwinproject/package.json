@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "description": "BeeTwin - Dijital İkiz Arıcılık Yönetim Sistemi",
   "type": "module",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "packageManager": "npm@10.8.2",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

@@ -1,25 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import EmptyStateCard from '../components/EmptyStateCard';
+import { LoadingSpinner } from '../components/LoadingAndError';
 
 import Sidebar from '../partials/Sidebar';
 import Header from '../partials/Header';
-import DashboardCard01 from '../partials/dashboard/DashboardCard01';
-import DashboardCard02 from '../partials/dashboard/DashboardCard02';
-import DashboardCard03 from '../partials/dashboard/DashboardCard03';
-import DashboardCard04 from '../partials/dashboard/DashboardCard04';
-import DashboardCard05 from '../partials/dashboard/DashboardCard05';
-import DashboardCard06 from '../partials/dashboard/DashboardCard06';
-import DashboardCard07 from '../partials/dashboard/DashboardCard07';
-import DashboardCard08 from '../partials/dashboard/DashboardCard08';
-import DashboardCard09 from '../partials/dashboard/DashboardCard09';
-import DashboardCard10 from '../partials/dashboard/DashboardCard10';
-import DashboardCard12 from '../partials/dashboard/DashboardCard12';
-import DashboardCard14 from '../partials/dashboard/DashboardCard14';
-import DashboardCard15 from '../partials/dashboard/DashboardCard15';
-import DashboardCard16 from '../partials/dashboard/DashboardCard16';
 import Banner from '../partials/Banner';
+
+// 🔧 OPTİMİZASYON: Lazy loading for dashboard cards
+const DashboardCard01 = lazy(() => import('../partials/dashboard/DashboardCard01'));
+const DashboardCard02 = lazy(() => import('../partials/dashboard/DashboardCard02'));
+const DashboardCard03 = lazy(() => import('../partials/dashboard/DashboardCard03'));
+const DashboardCard04 = lazy(() => import('../partials/dashboard/DashboardCard04'));
+const DashboardCard05 = lazy(() => import('../partials/dashboard/DashboardCard05'));
+const DashboardCard06 = lazy(() => import('../partials/dashboard/DashboardCard06'));
+const DashboardCard07 = lazy(() => import('../partials/dashboard/DashboardCard07'));
+const DashboardCard08 = lazy(() => import('../partials/dashboard/DashboardCard08'));
+const DashboardCard09 = lazy(() => import('../partials/dashboard/DashboardCard09'));
+const DashboardCard10 = lazy(() => import('../partials/dashboard/DashboardCard10'));
+const DashboardCard12 = lazy(() => import('../partials/dashboard/DashboardCard12'));
+const DashboardCard14 = lazy(() => import('../partials/dashboard/DashboardCard14'));
+const DashboardCard15 = lazy(() => import('../partials/dashboard/DashboardCard15'));
+const DashboardCard16 = lazy(() => import('../partials/dashboard/DashboardCard16'));
 function Dashboard() {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);

@@ -88,14 +88,9 @@ export const useRealTimeData = () => {
             const connectToWebSocket = () => {
                 console.log(`🔗 Attempting WebSocket connection from hook ${hookId}...`);
 
-                if (process.env.NODE_ENV === 'development') {
-                    console.log('🚧 Development mode - Skipping WebSocket connection');
-                    console.log('📡 Real Data Mode: No WebSocket server in development');
-                    setConnectionStatus(false);
-                    return;
-                }
+                // DÜZELTME: Development mode'da da bağlantı denemesi yap
+                console.log('� Attempting WebSocket connection in all environments');
 
-                // Production WebSocket connection logic would go here
                 websocketService.connect()
                     .then(() => {
                         setConnectionStatus(true);

@@ -90,6 +90,12 @@ class WebSocketService {
                     console.log('❌ Socket.IO disconnected');
                     this.isConnected = false;
                     this.notifyListeners('connectionStatus', { connected: false });
+
+                    // 🔧 OPTİMİZASYON: Otomatik reconnection
+                    setTimeout(() => {
+                        console.log('🔄 Attempting automatic reconnection...');
+                        this.connect();
+                    }, 5000);
                 });
 
                 this.socket.on('connect_error', (error) => {

@@ -49,18 +49,32 @@ router.post('/', auth, async (req, res) => {
 
         const { sensor, ...hiveData } = req.body;
 
-        // Eğer sensör bilgisi varsa, başka bir kovan aynı sensörü kullanıyor mu kontrol et
-        if (sensor && sensor.routerId && sensor.sensorId) {
-            const existingHive = await Hive.findOne({
-                'sensor.routerId': sensor.routerId,
-                'sensor.sensorId': sensor.sensorId
-            });
-
-            if (existingHive) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Bu sensör başka bir kovan tarafından kullanılıyor'
+        // GLOBAL Router/Sensor ID benzersizlik kontrolü
+        if (sensor) {
+            if (sensor.routerId) {
+                const existingRouterHive = await Hive.findOne({
+                    'sensor.routerId': sensor.routerId
                 });
+
+                if (existingRouterHive) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `Router ID "${sensor.routerId}" zaten başka bir kovan tarafından kullanılıyor. Her Router ID benzersiz olmalıdır.`
+                    });
+                }
+            }
+
+            if (sensor.sensorId) {
+                const existingSensorHive = await Hive.findOne({
+                    'sensor.sensorId': sensor.sensorId
+                });
+
+                if (existingSensorHive) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `Sensor ID "${sensor.sensorId}" zaten başka bir kovan tarafından kullanılıyor. Her Sensor ID benzersiz olmalıdır.`
+                    });
+                }
             }
         }
 
@@ -129,18 +143,31 @@ router.put('/:id/sensor', auth, async (req, res) => {
             });
         }
 
-        // Başka bir kovan aynı sensörü kullanıyor mu kontrol et
-        if (routerId && sensorId) {
-            const existingHive = await Hive.findOne({
+        // GLOBAL Router/Sensor ID benzersizlik kontrolü
+        if (routerId) {
+            const existingRouterHive = await Hive.findOne({
                 'sensor.routerId': routerId,
+                _id: { $ne: req.params.id }
+            });
+
+            if (existingRouterHive) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Router ID "${routerId}" zaten başka bir kovan tarafından kullanılıyor. Her Router ID benzersiz olmalıdır.`
+                });
+            }
+        }
+
+        if (sensorId) {
+            const existingSensorHive = await Hive.findOne({
                 'sensor.sensorId': sensorId,
                 _id: { $ne: req.params.id }
             });
 
-            if (existingHive) {
+            if (existingSensorHive) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Bu sensör başka bir kovan tarafından kullanılıyor'
+                    message: `Sensor ID "${sensorId}" zaten başka bir kovan tarafından kullanılıyor. Her Sensor ID benzersiz olmalıdır.`
                 });
             }
         }

@@ -8,14 +8,6 @@ import ApiService from '../services/api';
 
 const AuthContext = createContext();
 
-export const useAuth = () => {
-    const context = useContext(AuthContext);
-    if (!context) {
-        throw new Error('useAuth must be used within an AuthProvider');
-    }
-    return context;
-};
-
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -115,14 +107,14 @@ export const AuthProvider = ({ children }) => {
             const response = await ApiService.login(email, password);
 
             if (response.success) {
-                localStorage.setItem('token', response.token);
-                localStorage.setItem('user', JSON.stringify(response.user));
+                localStorage.setItem('token', response.data.token);
+                localStorage.setItem('user', JSON.stringify(response.data.user));
 
-                setUser(response.user);
+                setUser(response.data.user);
                 setIsAuthenticated(true);
-                await loadUserProfile(response.user);
+                await loadUserProfile(response.data.user);
 
-                console.log('✅ Login successful:', response.user.email);
+                console.log('✅ Login successful:', response.data.user.email);
                 return { success: true };
             } else {
                 console.log('❌ Login failed:', response.message);
@@ -131,6 +123,40 @@ export const AuthProvider = ({ children }) => {
         } catch (error) {
             console.error('❌ Login error:', error);
             return { success: false, message: 'Login failed' };
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Register function
+    const register = async (userData) => {
+        try {
+            setLoading(true);
+            console.log('📝 Registering user:', userData.email);
+
+            const response = await ApiService.register(userData);
+
+            if (response.success) {
+                // Store token and user data
+                localStorage.setItem('token', response.data.token);
+                localStorage.setItem('user', JSON.stringify(response.data.user));
+
+                // Update state
+                setUser(response.data.user);
+                setIsAuthenticated(true);
+
+                // Load user profile data
+                await loadUserProfile(response.data.user);
+
+                console.log('✅ Registration and auto-login successful:', response.data.user.email);
+                return { success: true, user: response.data.user };
+            } else {
+                console.log('❌ Registration failed:', response.message);
+                return { success: false, message: response.message };
+            }
+        } catch (error) {
+            console.error('❌ Registration error:', error);
+            return { success: false, message: 'Registration failed' };
         } finally {
             setLoading(false);
         }
@@ -188,6 +214,7 @@ export const AuthProvider = ({ children }) => {
         apiaries,
         hives,
         login,
+        register,
         logout,
         checkAuthStatus,
         loadUserProfile,
@@ -201,6 +228,15 @@ export const AuthProvider = ({ children }) => {
             {children}
         </AuthContext.Provider>
     );
+};
+
+// useAuth hook
+export const useAuth = () => {
+    const context = useContext(AuthContext);
+    if (!context) {
+        throw new Error('useAuth must be used within AuthProvider');
+    }
+    return context;
 };
 
 export default AuthContext;

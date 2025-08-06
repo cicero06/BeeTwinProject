@@ -1,16 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import ApiService from '../services/api';
 import GoogleSignIn from '../components/GoogleSignIn';
 import HiveHardwareMappingForm from '../components/HiveHardwareMappingForm';
 import LocationPicker from '../components/LocationPicker';
 
 function WelcomingPage() {
+    const navigate = useNavigate();
+    const { register, login } = useAuth();
+
     const [isSignUp, setIsSignUp] = useState(false);
     const [isLoaded, setIsLoaded] = useState(false);
     const [showTypewriter, setShowTypewriter] = useState(false);
     const [userType, setUserType] = useState('');
     const [registrationStep, setRegistrationStep] = useState(1);
+    const [tempUserId] = useState('temp-' + Date.now()); // Registration için geçici ID
     const [apiaries, setApiaries] = useState([{
         name: '',
         location: '',
@@ -63,7 +68,6 @@ function WelcomingPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
-    const navigate = useNavigate();
     const audioRef = useRef(null);
 
     const addApiary = () => {
@@ -198,18 +202,13 @@ function WelcomingPage() {
         setError('');
 
         try {
-            const result = await ApiService.login(loginData.email, loginData.password);
+            const result = await login(loginData.email, loginData.password);
 
             if (result.success) {
-                // Kullanıcı tipine göre yönlendirme
-                const userType = result.data.user.userType;
-                if (userType === 'admin') {
-                    navigate('/admin-panel');
-                } else {
-                    navigate('/dashboard');
-                }
+                // AuthContext otomatik olarak user state'ini ve navigation'ı handle eder
+                navigate('/dashboard');
             } else {
-                setError(result.error);
+                setError(result.message || 'Giriş başarısız');
             }
 
         } catch (error) {
@@ -276,7 +275,18 @@ function WelcomingPage() {
         setError('');
 
         try {
+            // Step 3'te zaten kayıt edilmiş kullanıcıyı dashboard'a yönlendir
+            if (registrationStep === 3) {
+                console.log('✅ Hardware mapping completed, redirecting to dashboard');
 
+                // Kullanıcı tipine göre yönlendirme
+                if (userType === 'admin') {
+                    navigate('/admin-panel');
+                } else {
+                    navigate('/dashboard');
+                }
+                return;
+            }
 
             // Şifre kontrolü
             if (registerData.password !== registerData.confirmPassword) {
@@ -330,16 +340,22 @@ function WelcomingPage() {
 
 
 
-            const result = await ApiService.register(requestData);
+            console.log('📤 Sending registration data:', requestData);
+            const result = await register(requestData);
 
             if (result.success) {
+                console.log('✅ Registration successful:', result.user);
 
-
-                // Kullanıcı tipine göre yönlendirme
-                if (userType === 'admin') {
-                    navigate('/admin-panel');
+                // 3. adım: Hardware pairing
+                if (userType === 'beekeeper' && apiaries.length > 0) {
+                    setRegistrationStep(3);
                 } else {
-                    navigate('/dashboard');
+                    // Kullanıcı tipine göre yönlendirme
+                    if (userType === 'admin') {
+                        navigate('/admin-panel');
+                    } else {
+                        navigate('/dashboard');
+                    }
                 }
             } else {
                 console.error('❌ Register failed:', result.error);
@@ -1680,6 +1696,7 @@ function WelcomingPage() {
                                             <HiveHardwareMappingForm
                                                 apiaries={apiaries}
                                                 setApiaries={setApiaries}
+                                                tempUserId={tempUserId}
                                             />
 
                                             {/* Navigation Buttons */}

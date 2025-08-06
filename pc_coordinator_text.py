@@ -143,9 +143,9 @@ def send_to_backend(payload):
     # Router 108 (MICS-4514) - Gaz sensörleri
     elif router_id == "108":
         if data_key == "CO":
-            api_data["sensorData"]["gasLevel"] = value
+            api_data["sensorData"]["co"] = value        # ✅ DÜZELTME: gasLevel → co
         elif data_key == "NO":
-            api_data["sensorData"]["no2Level"] = value
+            api_data["sensorData"]["no2"] = value       # ✅ DÜZELTME: no2Level → no2
     
     # Router 109+ - Genişletilebilir yapı
     elif router_id == "109":

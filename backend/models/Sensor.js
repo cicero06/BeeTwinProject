@@ -25,7 +25,11 @@ const sensorSchema = new mongoose.Schema({
     },
     sensorTypes: [{
         type: String,
-        enum: ['temperature', 'humidity', 'weight', 'sound', 'vibration'],
+        enum: [
+            'temperature', 'humidity', 'pressure', 'altitude',
+            'weight', 'sound', 'vibration', 'co', 'no2',
+            'gasLevel', 'smoke', 'lpg'
+        ],
         required: true
     }],
     status: {

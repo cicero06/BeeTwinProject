@@ -5,25 +5,37 @@ const jwt = require('jsonwebtoken');
 const setupWebSocket = (server) => {
     const io = new Server(server, {
         cors: {
-            origin: process.env.CLIENT_URL || "http://localhost:3000",
+            origin: [
+                process.env.CLIENT_URL || "http://localhost:3000",
+                "http://localhost:5173",
+                "http://127.0.0.1:5173"
+            ],
             credentials: true
         }
     });
 
-    // Authentication middleware for WebSocket
+    // Authentication middleware for WebSocket (smart auth)
     io.use((socket, next) => {
         const token = socket.handshake.auth.token;
 
         if (!token) {
-            return next(new Error('Authentication error'));
+            console.log('⚠️ WebSocket connection without token - allowing with limited access');
+            socket.userId = 'anonymous';
+            socket.isAuthenticated = false;
+            return next();
         }
 
         try {
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
             socket.userId = decoded.userId;
+            socket.isAuthenticated = true;
+            console.log('✅ WebSocket authenticated user:', decoded.userId);
             next();
         } catch (err) {
-            next(new Error('Authentication error'));
+            console.log('⚠️ WebSocket token invalid - allowing with limited access');
+            socket.userId = 'anonymous';
+            socket.isAuthenticated = false;
+            next();
         }
     });
 

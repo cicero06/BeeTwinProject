@@ -2,6 +2,256 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const Sensor = require('../models/Sensor');
+const SensorReading = require('../models/SensorReading');
+
+// @route   GET /api/sensors/user-routers
+// @desc    Kullanıcının tüm router verilerini getir
+// @access  Private
+router.get('/user-routers', auth, async (req, res) => {
+    try {
+        console.log('🔍 User routers data request - User:', req.user.userId);
+
+        // Kullanıcının tüm sensörlerini bul
+        const sensors = await Sensor.find({
+            ownerId: req.user.userId
+        });
+
+        if (!sensors || sensors.length === 0) {
+            console.log('⚠️ No sensors found for user:', req.user.userId);
+            return res.status(404).json({
+                success: false,
+                message: 'Sensör bulunamadı'
+            });
+        }
+
+        const routerData = {};
+
+        // Her sensör için son veriyi al
+        for (const sensor of sensors) {
+            const latestReading = await SensorReading.findOne({
+                sensorId: sensor._id
+            }).sort({ timestamp: -1 });
+
+            const routerId = sensor.deviceId.replace('BT', ''); // BT100 → 100
+
+            routerData[routerId] = {
+                routerId: routerId,
+                deviceId: sensor.deviceId,
+                sensorName: sensor.name,
+                sensorType: sensor.type,
+                data: latestReading ? latestReading.data : null,
+                batteryLevel: latestReading ? latestReading.batteryLevel : null,
+                signalStrength: latestReading ? latestReading.signalStrength : null,
+                timestamp: latestReading ? latestReading.timestamp : null,
+                isActive: sensor.isActive,
+                source: latestReading ? 'sensor' : 'no_data'
+            };
+        }
+
+        res.json({
+            success: true,
+            data: routerData
+        });
+
+    } catch (error) {
+        console.error('❌ User routers veri hatası:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Router verileri alınamadı'
+        });
+    }
+});
+
+// @route   GET /api/sensors/router/:routerId
+// @desc    Belirli router verilerini getir (dinamik)
+// @access  Private
+router.get('/router/:routerId', auth, async (req, res) => {
+    try {
+        const { routerId } = req.params;
+        console.log(`🔍 Router ${routerId} data request - User:`, req.user.userId);
+
+        // Router sensörünü bul
+        const sensor = await Sensor.findOne({
+            ownerId: req.user.userId,
+            deviceId: `BT${routerId}`
+        });
+
+        if (!sensor) {
+            console.log(`⚠️ Router ${routerId} sensor not found for user:`, req.user.userId);
+            return res.status(404).json({
+                success: false,
+                message: `Router ${routerId} sensörü bulunamadı`
+            });
+        }
+
+        // Son sensör verilerini al
+        const latestReading = await SensorReading.findOne({
+            sensorId: sensor._id
+        }).sort({ timestamp: -1 });
+
+        if (!latestReading) {
+            console.log(`⚠️ No readings found for Router ${routerId}`);
+            return res.json({
+                success: true,
+                data: {
+                    routerId: routerId,
+                    deviceId: sensor.deviceId,
+                    data: null,
+                    batteryLevel: null,
+                    signalStrength: null,
+                    timestamp: new Date().toISOString(),
+                    source: 'no_data'
+                }
+            });
+        }
+
+        // Gerçek veri varsa onu döndür
+        res.json({
+            success: true,
+            data: {
+                routerId: routerId,
+                deviceId: sensor.deviceId,
+                ...latestReading.data,
+                batteryLevel: latestReading.batteryLevel,
+                signalStrength: latestReading.signalStrength,
+                timestamp: latestReading.timestamp,
+                source: 'sensor'
+            }
+        });
+
+    } catch (error) {
+        console.error(`❌ Router ${req.params.routerId} veri hatası:`, error);
+        res.status(500).json({
+            success: false,
+            message: `Router ${req.params.routerId} verisi alınamadı`
+        });
+    }
+});
+
+// ESKİ ENDPOINTS (Backward Compatibility)
+// @route   GET /api/sensors/router-107
+// @desc    Router 107 (BMP280) sensor verilerini getir
+// @access  Private
+router.get('/router-107', auth, async (req, res) => {
+    try {
+        console.log('🔍 Router 107 data request - User:', req.user.userId);
+
+        // Router 107 sensor'unu bul
+        const sensor = await Sensor.findOne({
+            ownerId: req.user.userId,
+            deviceId: 'BT107'
+        });
+
+        if (!sensor) {
+            console.log('⚠️ Router 107 sensor not found for user:', req.user.userId);
+            return res.status(404).json({
+                success: false,
+                message: 'Router 107 sensörü bulunamadı'
+            });
+        }
+
+        // Son sensör verilerini al
+        const latestReading = await SensorReading.findOne({
+            sensorId: sensor._id
+        }).sort({ timestamp: -1 });
+
+        if (!latestReading) {
+            console.log('⚠️ No readings found for Router 107');
+            // Simüle data döndür
+            return res.json({
+                success: true,
+                data: {
+                    temperature: 25.5 + (Math.random() - 0.5) * 3,
+                    humidity: 65 + (Math.random() - 0.5) * 8,
+                    pressure: 1013.25 + (Math.random() - 0.5) * 10,
+                    altitude: 150 + (Math.random() - 0.5) * 20,  // ✅ Altitude eklendi
+                    timestamp: new Date().toISOString(),
+                    source: 'simulated'
+                }
+            });
+        }
+
+        // Gerçek veri varsa onu döndür
+        res.json({
+            success: true,
+            data: {
+                temperature: latestReading.data?.temperature || 25.5,
+                humidity: latestReading.data?.humidity || 65,
+                pressure: latestReading.data?.pressure || 1013.25,
+                altitude: latestReading.data?.altitude || 150,    // ✅ Altitude eklendi
+                timestamp: latestReading.timestamp,
+                source: 'sensor'
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Router 107 veri hatası:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Router 107 verisi alınamadı'
+        });
+    }
+});
+
+// @route   GET /api/sensors/router-108
+// @desc    Router 108 (MICS-4514) sensor verilerini getir
+// @access  Private
+router.get('/router-108', auth, async (req, res) => {
+    try {
+        console.log('🔍 Router 108 data request - User:', req.user.userId);
+
+        // Router 108 sensor'unu bul
+        const sensor = await Sensor.findOne({
+            ownerId: req.user.userId,
+            deviceId: 'BT108'
+        });
+
+        if (!sensor) {
+            console.log('⚠️ Router 108 sensor not found for user:', req.user.userId);
+            return res.status(404).json({
+                success: false,
+                message: 'Router 108 sensörü bulunamadı'
+            });
+        }
+
+        // Son sensör verilerini al
+        const latestReading = await SensorReading.findOne({
+            sensorId: sensor._id
+        }).sort({ timestamp: -1 });
+
+        if (!latestReading) {
+            console.log('⚠️ No readings found for Router 108');
+            // Simüle data döndür
+            return res.json({
+                success: true,
+                data: {
+                    co: 0.5 + Math.random() * 2,
+                    no2: 0.3 + Math.random() * 1.5,
+                    timestamp: new Date().toISOString(),
+                    source: 'simulated'
+                }
+            });
+        }
+
+        // Gerçek veri varsa onu döndür
+        res.json({
+            success: true,
+            data: {
+                co: latestReading.data?.co || 0.5,
+                no2: latestReading.data?.no2 || 0.3,
+                timestamp: latestReading.timestamp,
+                source: 'sensor'
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Router 108 veri hatası:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Router 108 verisi alınamadı'
+        });
+    }
+});
 
 // @route   GET /api/sensors
 // @desc    Kullanıcının sensörlerini getir

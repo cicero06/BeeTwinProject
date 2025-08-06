@@ -2,12 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Sidebar from '../partials/Sidebar';
 import Header from '../partials/Header';
+import RouterIdGuide from '../components/RouterIdGuide';
+import SensorIdGuide from '../components/SensorIdGuide';
 
 function HiveManagement() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [hives, setHives] = useState([]);
     const [loading, setLoading] = useState(true);
     const [editingHive, setEditingHive] = useState(null);
+
+    // Modal dialog states
+    const [showSensorModal, setShowSensorModal] = useState(false);
+    const [selectedHive, setSelectedHive] = useState(null);
+    const [routerId, setRouterId] = useState('');
+    const [sensorId, setSensorId] = useState('');
+
     const { user } = useAuth();
 
     useEffect(() => {
@@ -74,14 +83,23 @@ function HiveManagement() {
     };
 
     const openSensorDialog = (hive) => {
-        const routerId = prompt(`Router ID girin (mevcut: ${hive.sensor?.routerId || 'Yok'}):`);
-        if (routerId === null) return;
+        setSelectedHive(hive);
+        setRouterId(hive.sensor?.routerId || '');
+        setSensorId(hive.sensor?.sensorId || '');
+        setShowSensorModal(true);
+    };
 
-        const sensorId = prompt(`Sensor ID girin (mevcut: ${hive.sensor?.sensorId || 'Yok'}):`);
-        if (sensorId === null) return;
+    const closeSensorModal = () => {
+        setShowSensorModal(false);
+        setSelectedHive(null);
+        setRouterId('');
+        setSensorId('');
+    };
 
-        if (routerId && sensorId) {
-            handleSensorPair(hive._id, routerId, sensorId);
+    const handleSensorSubmit = () => {
+        if (selectedHive && routerId && sensorId) {
+            handleSensorPair(selectedHive._id, routerId, sensorId);
+            closeSensorModal();
         }
     };
 
@@ -141,8 +159,8 @@ function HiveManagement() {
                                                 <div className="flex items-center justify-between">
                                                     <span className="text-gray-600">Durum:</span>
                                                     <span className={`px-3 py-1 rounded-full text-sm font-medium ${hive.status === 'active'
-                                                            ? 'bg-green-100 text-green-800'
-                                                            : 'bg-red-100 text-red-800'
+                                                        ? 'bg-green-100 text-green-800'
+                                                        : 'bg-red-100 text-red-800'
                                                         }`}>
                                                         {hive.status === 'active' ? '🟢 Aktif' : '🔴 Pasif'}
                                                     </span>
@@ -169,8 +187,8 @@ function HiveManagement() {
                                                             <div className="flex justify-between">
                                                                 <span className="text-gray-600">Bağlantı:</span>
                                                                 <span className={`px-2 py-1 rounded text-sm ${hive.sensor.isConnected
-                                                                        ? 'bg-green-100 text-green-800'
-                                                                        : 'bg-red-100 text-red-800'
+                                                                    ? 'bg-green-100 text-green-800'
+                                                                    : 'bg-red-100 text-red-800'
                                                                     }`}>
                                                                     {hive.sensor.isConnected ? '✅ Bağlı' : '❌ Bağlı Değil'}
                                                                 </span>
@@ -226,6 +244,80 @@ function HiveManagement() {
                     </div>
                 </main>
             </div>
+
+            {/* Sensor Configuration Modal */}
+            {showSensorModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white dark:bg-gray-800 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                        <div className="p-6">
+                            <div className="flex justify-between items-center mb-4">
+                                <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                                    🔧 Sensör Eşleştirme - {selectedHive?.name}
+                                </h2>
+                                <button
+                                    onClick={closeSensorModal}
+                                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {/* Sol taraf: Form */}
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                            Router ID
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={routerId}
+                                            onChange={(e) => setRouterId(e.target.value)}
+                                            placeholder="Örnek: AHMET107, BT2025"
+                                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                            Sensor ID
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={sensorId}
+                                            onChange={(e) => setSensorId(e.target.value)}
+                                            placeholder="Örnek: AHMET107S01, 1013"
+                                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                                        />
+                                    </div>
+
+                                    <div className="flex space-x-3 pt-4">
+                                        <button
+                                            onClick={handleSensorSubmit}
+                                            disabled={!routerId || !sensorId}
+                                            className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white py-2 px-4 rounded-lg transition-colors"
+                                        >
+                                            ✅ Kaydet
+                                        </button>
+                                        <button
+                                            onClick={closeSensorModal}
+                                            className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded-lg transition-colors"
+                                        >
+                                            ❌ İptal
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Sağ taraf: Rehberler */}
+                                <div className="space-y-4">
+                                    <RouterIdGuide onSuggestionClick={setRouterId} />
+                                    <SensorIdGuide routerId={routerId} onSuggestionClick={setSensorId} />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

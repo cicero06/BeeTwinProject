@@ -45,39 +45,47 @@ router.post('/assign', [
             });
         }
 
-        // Router ID duplicate kontrolü
+        // Router ID duplicate kontrolü - GLOBAL (TÜM KULLANICILAR ARASINDA)
         const existingRouterHive = await Hive.findOne({
             'sensor.routerId': routerId,
             _id: { $ne: hiveId } // Aynı kovan hariç
-        });
+        }).populate('apiary', 'ownerId');
 
         if (existingRouterHive) {
+            const isOwnHive = existingRouterHive.apiary.ownerId.toString() === req.user.id;
             return res.status(400).json({
                 success: false,
-                message: `Router ID "${routerId}" zaten "${existingRouterHive.name}" kovanında kullanılıyor`,
+                message: isOwnHive
+                    ? `Router ID "${routerId}" zaten sizin "${existingRouterHive.name}" kovanınızda kullanılıyor`
+                    : `Router ID "${routerId}" başka bir kullanıcı tarafından kullanılıyor. Lütfen benzersiz bir Router ID seçin.`,
                 error: 'DUPLICATE_ROUTER_ID',
                 conflictHive: {
                     id: existingRouterHive._id,
-                    name: existingRouterHive.name
+                    name: existingRouterHive.name,
+                    isOwn: isOwnHive
                 }
             });
         }
 
-        // Sensor ID duplicate kontrolü (varsa)
+        // Sensor ID duplicate kontrolü - GLOBAL (TÜM KULLANICILAR ARASINDA) (varsa)
         if (sensorId) {
             const existingSensorHive = await Hive.findOne({
                 'sensor.sensorId': sensorId,
                 _id: { $ne: hiveId }
-            });
+            }).populate('apiary', 'ownerId');
 
             if (existingSensorHive) {
+                const isOwnHive = existingSensorHive.apiary.ownerId.toString() === req.user.id;
                 return res.status(400).json({
                     success: false,
-                    message: `Sensor ID "${sensorId}" zaten "${existingSensorHive.name}" kovanında kullanılıyor`,
+                    message: isOwnHive
+                        ? `Sensor ID "${sensorId}" zaten sizin "${existingSensorHive.name}" kovanınızda kullanılıyor`
+                        : `Sensor ID "${sensorId}" başka bir kullanıcı tarafından kullanılıyor. Lütfen benzersiz bir Sensor ID seçin.`,
                     error: 'DUPLICATE_SENSOR_ID',
                     conflictHive: {
                         id: existingSensorHive._id,
-                        name: existingSensorHive.name
+                        name: existingSensorHive.name,
+                        isOwn: isOwnHive
                     }
                 });
             }

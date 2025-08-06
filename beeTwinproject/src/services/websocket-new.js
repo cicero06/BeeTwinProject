@@ -122,25 +122,6 @@ class WebSocketService {
     }
 
     /**
-     * Register hook for useRealTimeData compatibility
-     */
-    registerHook(hookId, callback) {
-        console.log(`🔗 Registering hook ${hookId}`);
-
-        // Register for all sensor data events
-        this.addEventListener('sensorData', callback);
-        this.addEventListener('mlInsights', callback);
-        this.addEventListener('connectionStatus', callback);
-
-        return () => {
-            console.log(`🔓 Unregistering hook ${hookId}`);
-            this.removeEventListener('sensorData', callback);
-            this.removeEventListener('mlInsights', callback);
-            this.removeEventListener('connectionStatus', callback);
-        };
-    }
-
-    /**
      * Remove event listener
      */
     removeEventListener(eventType, callback) {

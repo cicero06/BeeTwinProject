@@ -143,54 +143,140 @@ router.post('/register', [
                 // Bu arılık için kovanları oluştur
                 if (apiaryData.hives && apiaryData.hives.length > 0) {
                     for (const hiveData of apiaryData.hives) {
-                        // 🔧 Hardware validation - Duplicate Router/Sensor ID kontrolü
-                        if (hiveData.hardware?.routerId) {
-                            const existingRouterHive = await Hive.findOne({
-                                'sensor.routerId': hiveData.hardware.routerId
-                            });
-                            if (existingRouterHive) {
-                                return res.status(400).json({
-                                    success: false,
-                                    message: `Router ID "${hiveData.hardware.routerId}" zaten başka bir kovan tarafından kullanılıyor: ${existingRouterHive.name}`,
-                                    error: 'DUPLICATE_ROUTER_ID'
-                                });
-                            }
-                        }
+                        console.log('🏠 Kovan işleniyor:', hiveData.name);
+                        console.log('🔧 Hardware verileri:', JSON.stringify(hiveData.hardware, null, 2));
 
-                        if (hiveData.hardware?.sensorId) {
-                            const existingSensorHive = await Hive.findOne({
-                                'sensor.sensorId': hiveData.hardware.sensorId
-                            });
-                            if (existingSensorHive) {
-                                return res.status(400).json({
-                                    success: false,
-                                    message: `Sensor ID "${hiveData.hardware.sensorId}" zaten başka bir kovan tarafından kullanılıyor: ${existingSensorHive.name}`,
-                                    error: 'DUPLICATE_SENSOR_ID'
-                                });
-                            }
-                        }
+                        // ÇOKLU ROUTER SİSTEMİ DESTEĞİ
+                        let sensorData = {};
 
-                        await Hive.create({
-                            name: hiveData.name || `Kovan ${hiveData.hiveNumber || 1}`,
-                            number: hiveData.hiveNumber || 1, // 🐛 EKSIK ALAN EKLENDİ
-                            description: hiveData.description || 'Kayıt sırasında oluşturulan kovan',
-                            apiary: apiary._id,
-                            type: hiveData.hiveType || 'langstroth', // 🐛 hiveType → type
-                            sensor: {
+                        if (hiveData.hardware?.routers && hiveData.hardware.routers.length > 0) {
+                            // YENİ ÇOKLU ROUTER SİSTEMİ
+                            console.log('🚀 Çoklu router sistemi algılandı:', hiveData.hardware.routers.length, 'router');
+
+                            // Her router için benzersizlik kontrolü
+                            for (const router of hiveData.hardware.routers) {
+                                if (router.routerId) {
+                                    const existingRouterHive = await Hive.findOne({
+                                        'sensor.routerId': router.routerId
+                                    });
+                                    if (existingRouterHive) {
+                                        return res.status(400).json({
+                                            success: false,
+                                            message: `Router ID "${router.routerId}" zaten kullanımda. Her Router ID benzersiz olmalıdır.`,
+                                            error: 'DUPLICATE_ROUTER_ID'
+                                        });
+                                    }
+                                }
+
+                                // Her sensör için benzersizlik kontrolü
+                                if (router.sensors && router.sensors.length > 0) {
+                                    for (const sensor of router.sensors) {
+                                        if (sensor.sensorId) {
+                                            const existingSensorHive = await Hive.findOne({
+                                                'sensor.sensorId': sensor.sensorId
+                                            });
+                                            if (existingSensorHive) {
+                                                return res.status(400).json({
+                                                    success: false,
+                                                    message: `Sensor ID "${sensor.sensorId}" zaten kullanımda. Her Sensor ID benzersiz olmalıdır.`,
+                                                    error: 'DUPLICATE_SENSOR_ID'
+                                                });
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Çoklu router verilerini sensor data formatına çevir
+                            sensorData = {
+                                // İlk aktif router'ı primary router yap (backward compatibility)
+                                routerId: hiveData.hardware.routers.find(r => r.routerId)?.routerId || null,
+                                sensorId: hiveData.hardware.routers
+                                    .find(r => r.sensors?.find(s => s.sensorId))?.sensors
+                                    .find(s => s.sensorId)?.sensorId || null,
+                                isConnected: hiveData.hardware.routers.some(r => r.routerId),
+                                connectionStatus: hiveData.hardware.routers.some(r => r.routerId) ? 'connected' : 'disconnected',
+                                lastDataReceived: null,
+                                calibrationDate: null,
+                                // Çoklu router detayları
+                                hardwareDetails: {
+                                    coordinatorAddress: hiveData.hardware.coordinatorAddress || '34',
+                                    channel: hiveData.hardware.channel || 23,
+                                    systemType: 'multi-router',
+                                    routers: hiveData.hardware.routers.map(router => ({
+                                        routerType: router.routerType,
+                                        routerName: router.routerName,
+                                        routerId: router.routerId,
+                                        address: router.address,
+                                        isActive: router.isActive,
+                                        sensors: router.sensors?.map(sensor => ({
+                                            sensorType: sensor.sensorType,
+                                            sensorName: sensor.sensorName,
+                                            sensorId: sensor.sensorId,
+                                            unit: sensor.unit,
+                                            isActive: sensor.isActive
+                                        })) || []
+                                    }))
+                                }
+                            };
+
+                        } else {
+                            // ESKİ TEK ROUTER SİSTEMİ (Legacy)
+                            console.log('⚙️ Legacy tek router sistemi algılandı');
+
+                            if (hiveData.hardware?.routerId) {
+                                const existingRouterHive = await Hive.findOne({
+                                    'sensor.routerId': hiveData.hardware.routerId
+                                });
+                                if (existingRouterHive) {
+                                    return res.status(400).json({
+                                        success: false,
+                                        message: `Router ID "${hiveData.hardware.routerId}" zaten kullanımda.`,
+                                        error: 'DUPLICATE_ROUTER_ID'
+                                    });
+                                }
+                            }
+
+                            if (hiveData.hardware?.sensorId) {
+                                const existingSensorHive = await Hive.findOne({
+                                    'sensor.sensorId': hiveData.hardware.sensorId
+                                });
+                                if (existingSensorHive) {
+                                    return res.status(400).json({
+                                        success: false,
+                                        message: `Sensor ID "${hiveData.hardware.sensorId}" zaten kullanımda.`,
+                                        error: 'DUPLICATE_SENSOR_ID'
+                                    });
+                                }
+                            }
+
+                            sensorData = {
                                 routerId: hiveData.hardware?.routerId || null,
                                 sensorId: hiveData.hardware?.sensorId || null,
                                 isConnected: !!(hiveData.hardware?.routerId && hiveData.hardware?.sensorId),
                                 connectionStatus: hiveData.hardware?.routerId && hiveData.hardware?.sensorId ? 'connected' : 'disconnected',
                                 lastDataReceived: null,
                                 calibrationDate: hiveData.hardware?.calibrationDate || null,
-                                // Donanım detayları
                                 hardwareDetails: {
-                                    coordinatorAddress: hiveData.hardware?.coordinatorAddress || null,
-                                    channel: hiveData.hardware?.channel || null,
-                                    routers: hiveData.hardware?.routers || []
+                                    coordinatorAddress: hiveData.hardware?.coordinatorAddress || '34',
+                                    channel: hiveData.hardware?.channel || 23,
+                                    systemType: 'legacy',
+                                    routers: []
                                 }
-                            }
+                            };
+                        }
+
+                        // Kovanı oluştur
+                        const newHive = await Hive.create({
+                            name: hiveData.name || `Kovan ${hiveData.hiveNumber || 1}`,
+                            number: hiveData.hiveNumber || 1,
+                            description: hiveData.description || 'Kayıt sırasında oluşturulan kovan',
+                            apiary: apiary._id,
+                            type: hiveData.hiveType || 'langstroth',
+                            sensor: sensorData
                         });
+
+                        console.log('✅ Kovan oluşturuldu:', newHive.name, 'ID:', newHive._id);
                     }
                 }
             }

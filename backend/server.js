@@ -5,7 +5,6 @@ const dotenv = require('dotenv');
 const path = require('path');
 const connectDB = require('./config/database');
 const { setupWebSocket } = require('./services/websocket');
-const SerialReader = require('./services/serialReader');
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -18,24 +17,6 @@ const server = http.createServer(app);
 
 // Setup WebSocket
 const io = setupWebSocket(server);
-
-// Setup Serial Reader for LoRa data
-const serialReader = new SerialReader(io, {
-    portPath: process.env.SERIAL_PORT || 'COM3', // .env'den alınacak
-    baudRate: parseInt(process.env.SERIAL_BAUD_RATE) || 9600
-});
-
-// Serial Reader'ı başlat - LoRa Coordinator bağlantısı
-setTimeout(() => {
-    serialReader.start().then((success) => {
-        if (success) {
-            console.log('✅ LoRa Coordinator bağlantısı başarılı - Gerçek zamanlı veri akışı aktif');
-        } else {
-            console.log('⚠️ LoRa Coordinator bağlanamadı - Manuel veri girişi kullanılacak');
-            console.log(`💡 Coordinator port: ${process.env.SERIAL_PORT || 'COM3'}`);
-        }
-    });
-}, 3000); // Server başladıktan 3 saniye sonra başlat
 
 // Middleware
 app.use(cors({
@@ -83,42 +64,6 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// Serial Reader status endpoint
-app.get('/api/serial-status', (req, res) => {
-    const status = serialReader.getStatus();
-    res.json({
-        success: true,
-        data: status
-    });
-});
-
-// Manuel test verisi gönderme endpoint (development)
-app.post('/api/test-serial', (req, res) => {
-    try {
-        const { testData } = req.body;
-        if (testData) {
-            serialReader.handleIncomingData(testData);
-            res.json({
-                success: true,
-                message: 'Test verisi işlendi',
-                data: testData
-            });
-        } else {
-            // Varsayılan test verisi
-            serialReader.handleIncomingData("BT001:25.5,65.2,45.8:85:-65");
-            res.json({
-                success: true,
-                message: 'Varsayılan test verisi gönderildi'
-            });
-        }
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: 'Test verisi hatası',
-            error: error.message
-        });
-    }
-});
 // Error handling middleware
 app.use((err, req, res, next) => {
     console.error(err.stack);
@@ -144,6 +89,5 @@ server.listen(PORT, () => {
     console.log(`🚀 Server is running on port ${PORT}`);
     console.log(`📊 Environment: ${process.env.NODE_ENV}`);
     console.log(`🌐 API Health: http://localhost:${PORT}/api/health`);
-    console.log(`📡 Serial Status: http://localhost:${PORT}/api/serial-status`);
-    console.log(`🧪 Test Serial: POST http://localhost:${PORT}/api/test-serial`);
+    console.log(`📡 Coordinator ayrı çalıştırın: py pc_coordinator_text.py`);
 });

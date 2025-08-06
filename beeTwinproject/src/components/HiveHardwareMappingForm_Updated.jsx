@@ -1,12 +1,7 @@
 import React, { useState } from 'react';
 import MultiRouterHiveForm from './MultiRouterHiveForm';
-import { useAuth } from '../contexts/AuthContext';
 
-const HiveHardwareMappingForm = ({ apiaries, setApiaries, tempUserId = null }) => {
-    const { user } = useAuth();
-
-    // Registration sırasında tempUserId kullan, sonrasında user.id
-    const effectiveUserId = tempUserId || user?.id || 'guest';
+const HiveHardwareMappingForm = ({ apiaries, setApiaries }) => {
     // ÇOKlu ROUTER KONFİGÜRASYON SİSTEMİ
     const multiRouterPresets = {
         'multi-router-standard': {
@@ -19,11 +14,10 @@ const HiveHardwareMappingForm = ({ apiaries, setApiaries, tempUserId = null }) =
                     routerType: 'bmp280',
                     routerName: 'Router 107 - BMP280',
                     address: '41',
-                    routerId: '', // Manuel giriş için boş
                     sensors: [
-                        { sensorType: 'temp', sensorName: 'Sıcaklık', unit: '°C', sensorId: '' },
-                        { sensorType: 'pressure', sensorName: 'Basınç', unit: 'hPa', sensorId: '' },
-                        { sensorType: 'humidity', sensorName: 'Nem', unit: '%', sensorId: '' }
+                        { sensorType: 'temp', sensorName: 'Sıcaklık', unit: '°C' },
+                        { sensorType: 'pressure', sensorName: 'Basınç', unit: 'hPa' },
+                        { sensorType: 'humidity', sensorName: 'Nem', unit: '%' }
                     ],
                     icon: '🌡️',
                     color: 'bg-green-100 text-green-800'
@@ -32,11 +26,10 @@ const HiveHardwareMappingForm = ({ apiaries, setApiaries, tempUserId = null }) =
                     routerType: 'mics4514',
                     routerName: 'Router 108 - MICS-4514',
                     address: '52',
-                    routerId: '', // Manuel giriş için boş
                     sensors: [
-                        { sensorType: 'co', sensorName: 'CO Seviyesi', unit: 'ppm', sensorId: '' },
-                        { sensorType: 'no2', sensorName: 'NO2 Seviyesi', unit: 'ppm', sensorId: '' },
-                        { sensorType: 'gasLevel', sensorName: 'Genel Gaz', unit: 'ppm', sensorId: '' }
+                        { sensorType: 'co', sensorName: 'CO Seviyesi', unit: 'ppm' },
+                        { sensorType: 'no2', sensorName: 'NO2 Seviyesi', unit: 'ppm' },
+                        { sensorType: 'gasLevel', sensorName: 'Genel Gaz', unit: 'ppm' }
                     ],
                     icon: '💨',
                     color: 'bg-purple-100 text-purple-800'
@@ -45,10 +38,9 @@ const HiveHardwareMappingForm = ({ apiaries, setApiaries, tempUserId = null }) =
                     routerType: 'loadcell',
                     routerName: 'Router 109 - Load Cell',
                     address: '66',
-                    routerId: '', // Manuel giriş için boş
                     sensors: [
-                        { sensorType: 'weight', sensorName: 'Kovan Ağırlığı', unit: 'kg', sensorId: '' },
-                        { sensorType: 'deltaWeight', sensorName: 'Ağırlık Değişimi', unit: 'kg', sensorId: '' }
+                        { sensorType: 'weight', sensorName: 'Kovan Ağırlığı', unit: 'kg' },
+                        { sensorType: 'deltaWeight', sensorName: 'Ağırlık Değişimi', unit: 'kg' }
                     ],
                     icon: '⚖️',
                     color: 'bg-orange-100 text-orange-800'
@@ -57,11 +49,10 @@ const HiveHardwareMappingForm = ({ apiaries, setApiaries, tempUserId = null }) =
                     routerType: 'mq2',
                     routerName: 'Router 110 - MQ2',
                     address: '58',
-                    routerId: '', // Manuel giriş için boş
                     sensors: [
-                        { sensorType: 'smoke', sensorName: 'Duman Seviyesi', unit: 'ppm', sensorId: '' },
-                        { sensorType: 'lpg', sensorName: 'LPG Seviyesi', unit: 'ppm', sensorId: '' },
-                        { sensorType: 'gasLevel', sensorName: 'Genel Gaz', unit: 'ppm', sensorId: '' }
+                        { sensorType: 'smoke', sensorName: 'Duman Seviyesi', unit: 'ppm' },
+                        { sensorType: 'lpg', sensorName: 'LPG Seviyesi', unit: 'ppm' },
+                        { sensorType: 'gasLevel', sensorName: 'Genel Gaz', unit: 'ppm' }
                     ],
                     icon: '🔥',
                     color: 'bg-red-100 text-red-800'
@@ -146,8 +137,8 @@ const HiveHardwareMappingForm = ({ apiaries, setApiaries, tempUserId = null }) =
                     <button
                         onClick={() => setSystemMode('multi-router')}
                         className={`p-4 rounded-lg border-2 transition-all ${systemMode === 'multi-router'
-                            ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-                            : 'border-gray-300 hover:border-green-300'
+                                ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                                : 'border-gray-300 hover:border-green-300'
                             }`}
                     >
                         <div className="flex items-center space-x-3">
@@ -169,8 +160,8 @@ const HiveHardwareMappingForm = ({ apiaries, setApiaries, tempUserId = null }) =
                     <button
                         onClick={() => setSystemMode('legacy')}
                         className={`p-4 rounded-lg border-2 transition-all ${systemMode === 'legacy'
-                            ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'
-                            : 'border-gray-300 hover:border-amber-300'
+                                ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'
+                                : 'border-gray-300 hover:border-amber-300'
                             }`}
                     >
                         <div className="flex items-center space-x-3">
@@ -216,7 +207,6 @@ const HiveHardwareMappingForm = ({ apiaries, setApiaries, tempUserId = null }) =
                 <MultiRouterHiveForm
                     apiaries={apiaries}
                     setApiaries={setApiaries}
-                    userId={effectiveUserId}
                 />
             ) : (
                 /* Legacy Tek Router Sistemi */

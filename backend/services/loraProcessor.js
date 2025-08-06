@@ -11,15 +11,16 @@ class LoRaDataProcessor {
         this.mlProcessor = new MLProcessor(); // 🧠 ML Processor entegrasyonu
     }
 
-    // Router ID'sine göre sensor types belirle
+    // Router ID'sine göre sensor types belirle - GÜNCEL TEST KOVALI
     getSensorTypesByRouter(routerId) {
         const routerConfigs = {
-            '107': ['temperature', 'humidity', 'pressure', 'altitude'], // BME280
-            '108': ['gasLevel', 'no2Level', 'co', 'no'],                // MICS-4514
-            '109': ['weight', 'temperature', 'humidity'],               // Ağırlık + Çevre
-            '110': ['vibration', 'sound', 'temperature'],               // Titreşim + Ses
-            '111': ['light', 'uv', 'temperature'],                      // Işık sensörleri
-            '112': ['ph', 'moisture', 'temperature']                    // Toprak sensörleri
+            // AKTIF ÇALIŞAN ROUTERLAR
+            '107': ['temperature', 'humidity', 'pressure', 'altitude'], // BMP280 - Router 107, Sensor 1013
+            '108': ['co', 'no2'],                           // MICS-4514 - Router 108, Sensor 1002
+
+            // GELECEKTE EKLENECEKLERİ (HAZIR OLSUN)
+            '109': ['weight', 'load'],                       // Load Sensor - Router 109, Sensor 1010  
+            '110': ['gas', 'smoke', 'lpg']                   // MQ2 Gas - Router 110, Sensor 1009
         };
 
         return routerConfigs[routerId] || ['temperature', 'humidity']; // Default sensors
@@ -129,13 +130,13 @@ class LoRaDataProcessor {
                 sensorId: sensor._id
             }).sort({ timestamp: -1 });
 
-            // SensorReading oluştur
+            // SensorReading oluştur (Battery ve Signal Strength eklendi)
             const readingData = {
                 sensorId: sensor._id,
                 data: wirelessData.sensorData,
-                batteryLevel: wirelessData.batteryLevel,
-                signalStrength: wirelessData.signalStrength,
                 timestamp: wirelessData.originalTimestamp || wirelessData.receivedAt,
+                batteryLevel: wirelessData.batteryLevel,   // 🔋 Coordinator'dan gelen
+                signalStrength: wirelessData.signalStrength, // 📶 Coordinator'dan gelen
                 metadata: {
                     receivedAt: wirelessData.receivedAt,
                     dataInterval: '10min',
@@ -341,6 +342,11 @@ class LoRaDataProcessor {
         try {
             // HEX string'i parse et
             if (typeof rawData === 'string') {
+                // TEXT format: "RID:107; SID:1013; WT: 25.62"
+                if (rawData.includes('RID:') && rawData.includes('SID:')) {
+                    return this.parseTextFormat(rawData);
+                }
+
                 // BT format: "BT001:25.5,65.2,45.8:85:-65"
                 // COORD format: "COORD_001:26.5,67.2,46.8,0.87:88:-68"
                 const [deviceId, sensorValues, battery, rssi] = rawData.split(':');
@@ -390,6 +396,76 @@ class LoRaDataProcessor {
         } catch (error) {
             console.error('❌ Payload parse error:', error);
             throw error;
+        }
+    }
+
+    // Text format parse: "RID:107; SID:1013; WT: 25.62"
+    parseTextFormat(rawData) {
+        try {
+            console.log('🔄 Parsing text format:', rawData);
+
+            // RID:107; SID:1013; WT: 25.62 parse et
+            const parts = rawData.trim().split(';');
+
+            if (parts.length !== 3) {
+                console.error('❌ Invalid text format parts count:', parts.length);
+                return null;
+            }
+
+            // RID parse et
+            const ridPart = parts[0].trim(); // "RID:107"
+            const routerId = ridPart.split(':')[1].trim(); // "107"
+
+            // SID parse et
+            const sidPart = parts[1].trim(); // " SID:1013"
+            const sensorId = sidPart.split(':')[1].trim(); // "1013"
+
+            // Data parse et
+            const dataPart = parts[2].trim(); // " WT: 25.62"
+            const dataKeyValue = dataPart.split(':');
+            const dataKey = dataKeyValue[0].trim(); // "WT"
+            const dataValue = parseFloat(dataKeyValue[1].trim()); // 25.62
+
+            // Data key mapping
+            const dataKeyMap = {
+                'WT': 'temperature',  // Weight/Temperature
+                'WH': 'humidity',     // Weight/Humidity 
+                'PR': 'pressure',     // Pressure
+                'AL': 'altitude',     // Altitude
+                'CO': 'co',           // Carbon Monoxide
+                'NO': 'no',           // Nitrogen Oxide
+                'WG': 'weight',       // Weight
+                'VB': 'vibration',    // Vibration
+                'SD': 'sound',        // Sound
+                'LT': 'light',        // Light
+                'UV': 'uv',           // UV
+                'PH': 'ph',           // pH
+                'MS': 'moisture'      // Moisture
+            };
+
+            const sensorType = dataKeyMap[dataKey] || dataKey.toLowerCase();
+
+            console.log('✅ Text format parsed:');
+            console.log(`   Router ID: ${routerId}`);
+            console.log(`   Sensor ID: ${sensorId}`);
+            console.log(`   Data: ${sensorType} = ${dataValue}`);
+
+            // LoRaProcessor formatına çevir
+            const sensorData = {};
+            sensorData[sensorType] = dataValue;
+
+            return {
+                deviceId: `BT${routerId}`, // BT107 format için
+                routerId: routerId,
+                sensorId: sensorId,
+                sensorData: sensorData,
+                batteryLevel: 85, // Default değer (text format'ta yok)
+                rssi: -65         // Default değer (text format'ta yok)
+            };
+
+        } catch (error) {
+            console.error('❌ Text format parse error:', error);
+            return null;
         }
     }
 }

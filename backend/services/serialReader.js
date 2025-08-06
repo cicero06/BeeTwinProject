@@ -188,10 +188,12 @@ class SerialReader {
         // Expected formats: 
         // BT format: "BT001:25.5,65.2,45.8:85:-65"
         // COORD format: "COORD_001:26.5,67.2,46.8,0.87:88:-68"
+        // NEW Text format: "RID:107; SID:1013; WT: 25.62"
         const btPattern = /^BT[0-9]+:[0-9.,]+:[0-9]+:-?[0-9]+$/;
         const coordPattern = /^COORD_[0-9]+:[0-9.,]+:[0-9]+:-?[0-9]+$/;
+        const textPattern = /^RID:\d+;\s*SID:\d+;\s*[A-Z]{2}:\s*[0-9.-]+$/;
 
-        return btPattern.test(data) || coordPattern.test(data);
+        return btPattern.test(data) || coordPattern.test(data) || textPattern.test(data);
     }
 
     // Yeniden bağlanma zamanlayıcısı

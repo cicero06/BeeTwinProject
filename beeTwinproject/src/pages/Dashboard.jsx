@@ -3,10 +3,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import EmptyStateCard from '../components/EmptyStateCard';
 
-// import DashboardCard12 from '../partials/dashboard/DashboardCard12_debug';
-// import DashboardCard12Sensor from '../partials/dashboard/DashboardCard12_sensor';
-// import DashboardCard12 from '../partials/dashboard/DashboardCard12';
-
 import Sidebar from '../partials/Sidebar';
 import Header from '../partials/Header';
 import DashboardCard01 from '../partials/dashboard/DashboardCard01';
@@ -19,11 +15,10 @@ import DashboardCard07 from '../partials/dashboard/DashboardCard07';
 import DashboardCard08 from '../partials/dashboard/DashboardCard08';
 import DashboardCard09 from '../partials/dashboard/DashboardCard09';
 import DashboardCard10 from '../partials/dashboard/DashboardCard10';
-// import DashboardCard11 from '../partials/dashboard/DashboardCard11';
 import DashboardCard12 from '../partials/dashboard/DashboardCard12';
-import DashboardCard13 from '../partials/dashboard/DashboardCard13';
 import DashboardCard14 from '../partials/dashboard/DashboardCard14';
 import DashboardCard15 from '../partials/dashboard/DashboardCard15';
+import DashboardCard16 from '../partials/dashboard/DashboardCard16';
 import Banner from '../partials/Banner';
 function Dashboard() {
   const navigate = useNavigate();
@@ -267,9 +262,9 @@ function Dashboard() {
                       <DashboardCard09 />
                       <DashboardCard10 />
                       <DashboardCard12 />
-                      <DashboardCard13 />
                       <DashboardCard14 />
                       <DashboardCard15 />
+                      <DashboardCard16 />
                     </>
                   )}
 
@@ -308,7 +303,6 @@ function Dashboard() {
                   <DashboardCard09 />
                   <DashboardCard10 />
                   <DashboardCard12 />
-                  <DashboardCard13 />
                   <DashboardCard14 />
                   <DashboardCard15 />
                 </>

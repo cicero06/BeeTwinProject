@@ -8,7 +8,17 @@ import { useAuth } from '../../contexts/AuthContext';
 import { adjustColorOpacity, getCssVariable } from '../../utils/Utils';
 
 /**
- * DashboardCard05 - Ağırlık Sensörü (Temizlenmiş Versiyon)
+ * DashboardCard05 - Kovan Ağırlık Sensörü (HX711)
+ * 
+ * Bu bileşen, kovan ağırlık değişimlerini izleyen özelleştirilmiş dashboard kartıdır.
+ * Ağırlık artışı/azalışı bal üretimi ve arı popülasyonu hakkında bilgi verir.
+ * 
+ * Özellikler:
+ * - Gerçek zamanlı ağırlık ölçümleri
+ * - Trend analizi (artış/azalış)
+ * - Haftalık/aylık değişim gösterimi
+ * 
+ * Not: HX711 load cell sensörü verilerini kullanır
  */
 function DashboardCard05() {
   const { user, hives } = useAuth();
@@ -16,10 +26,14 @@ function DashboardCard05() {
 
   const [loading, setLoading] = useState(true);
   const [weightStats, setWeightStats] = useState({
-    currentWeight: 0,
+    currentWeight: null,
+    previousWeight: null,
     trend: 0,
-    lastUpdate: null
+    trendDirection: 'stable',
+    lastUpdate: null,
+    source: null
   });
+  const [error, setError] = useState(null);
 
   // Ağırlık verilerini işle
   useEffect(() => {
@@ -159,8 +173,8 @@ function DashboardCard05() {
 
         <div className="flex items-center mt-2">
           <div className={`text-sm font-medium ${parseFloat(weightStats.trend) >= 0
-              ? 'text-green-600 dark:text-green-400'
-              : 'text-red-600 dark:text-red-400'
+            ? 'text-green-600 dark:text-green-400'
+            : 'text-red-600 dark:text-red-400'
             }`}>
             {parseFloat(weightStats.trend) >= 0 ? '+' : ''}{weightStats.trend} kg
           </div>

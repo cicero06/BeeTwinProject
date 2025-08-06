@@ -54,50 +54,68 @@ async function migrateDatabase() {
                 console.log(`  ✅ ${routerId}/${sensorId} eklendi (${sensorInfo.type})`);
             }
 
-            // Fiziksel kovan için tüm router'ları ekle
+            // Fiziksel kovan için SADECE ÇALIŞAN router'ları ekle
             if (hive.name === 'Kovan 1') {
-                // Router 107 zaten varsa ekleme
+                // ✅ Router 107 - BMP280 (ÇALIŞIYOR)
                 if (!sensors.find(s => s.routerId === '107')) {
                     sensors.push({
                         routerId: '107',
                         sensorId: '1013',
-                        type: 'environmental',
+                        type: 'bmp280',
                         deviceId: 'BT107',
                         isActive: true,
-                        isConnected: false,
-                        connectionStatus: 'unknown',
-                        description: 'BME280 Environmental Sensor',
-                        dataTypes: ['temperature', 'humidity', 'pressure', 'altitude']
+                        isConnected: true,
+                        connectionStatus: 'active',
+                        description: 'BMP280 Environmental Sensor - ÇALIŞIYOR',
+                        dataTypes: ['temperature', 'humidity', 'pressure']
                     });
+                    console.log('  ✅ Router 107 (BMP280) eklendi - AKTIF');
                 }
 
-                // Router 108 - Gas sensor
+                // ✅ Router 108 - MICS-4514 (ÇALIŞIYOR)
                 if (!sensors.find(s => s.routerId === '108')) {
                     sensors.push({
                         routerId: '108',
                         sensorId: '1002',
-                        type: 'gas',
+                        type: 'mics4514',
                         deviceId: 'BT108',
                         isActive: true,
-                        isConnected: false,
-                        connectionStatus: 'unknown',
-                        description: 'MICS-4514 Gas Sensor',
-                        dataTypes: ['gasLevel', 'no2Level', 'co', 'no']
+                        isConnected: true,
+                        connectionStatus: 'active',
+                        description: 'MICS-4514 Gas Sensor - ÇALIŞIYOR',
+                        dataTypes: ['co', 'no2', 'nh3', 'gasLevel']
                     });
+                    console.log('  ✅ Router 108 (MICS-4514) eklendi - AKTIF');
                 }
 
-                // Router 109 - Weight sensor (henüz aktif değil)
+                // ⏳ Router 109 - Load Sensor (HENÜZ ÇALIŞMIYOR)
                 if (!sensors.find(s => s.routerId === '109')) {
                     sensors.push({
                         routerId: '109',
                         sensorId: '1010',
-                        type: 'weight',
+                        type: 'loadSensor',
                         deviceId: 'BT109',
                         isActive: false,
                         isConnected: false,
-                        connectionStatus: 'unknown',
-                        description: 'Weight Sensor',
-                        dataTypes: ['weight', 'temperature', 'humidity']
+                        connectionStatus: 'inactive',
+                        description: 'Load Sensor - GELİŞTİRME AŞAMASINDA',
+                        dataTypes: ['weight', 'load']
+                    });
+                    console.log('  ⏳ Router 109 (Load) eklendi - PASIF');
+                }
+
+                // ⏳ Router 110 - MQ2 Gas (HENÜZ ÇALIŞMIYOR)
+                if (!sensors.find(s => s.routerId === '110')) {
+                    sensors.push({
+                        routerId: '110',
+                        sensorId: '1009',
+                        type: 'mq2',
+                        deviceId: 'BT110',
+                        isActive: false,
+                        isConnected: false,
+                        connectionStatus: 'inactive',
+                        description: 'MQ2 Gas Sensor - GELİŞTİRME AŞAMASINDA',
+                        dataTypes: ['gas', 'smoke', 'lpg']
                     });
                 }
 

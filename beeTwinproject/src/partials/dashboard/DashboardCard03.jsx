@@ -33,9 +33,11 @@ function DashboardCard03() {
     temperature: null,
     humidity: null,
     pressure: null,
+    altitude: null,        // ✅ Altitude state eklendi
     lastUpdate: null,
     alertCount: 0,
-    trendDirection: "stable"
+    trendDirection: "stable",
+    source: null
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -64,7 +66,8 @@ function DashboardCard03() {
           pressure: latestData.parameters?.pressure || latestData.pressure || null,
           lastUpdate: latestData.timestamp || new Date().toISOString(),
           alertCount: calculateAlertCount(latestData.parameters?.temperature || latestData.temperature),
-          trendDirection: "stable" // TODO: Implement trend calculation
+          trendDirection: "stable", // TODO: Implement trend calculation
+          source: 'realtime'
         });
         setError(null);
       }
@@ -77,18 +80,43 @@ function DashboardCard03() {
     return (temperature < 33 || temperature > 36) ? 1 : 0;
   };
 
+  // Kullanıcının BMP280 (Router tip 1) router'ını bul
+  const getBMP280RouterId = () => {
+    if (!hives || hives.length === 0) return null;
+
+    // İlk kovan, ilk router (BMP280)
+    const firstHive = hives[0];
+    if (firstHive?.hardware?.routers && firstHive.hardware.routers.length > 0) {
+      const bmp280Router = firstHive.hardware.routers.find(r => r.routerType === 'bmp280');
+      return bmp280Router?.routerId || null;
+    }
+
+    // Fallback: ESKİ sistem uyumluluğu
+    if (firstHive?.sensor?.routerId) {
+      return firstHive.sensor.routerId;
+    }
+
+    return null;
+  };
+
   // Fallback API çağrısı (WebSocket bağlantısı yoksa)
-  const fetchRouter107Data = async () => {
+  const fetchBMP280Data = async () => {
     if (connectionStatus) {
       console.log('WebSocket aktif, API çağrısı atlanıyor');
       return; // WebSocket varsa API çağrısı yapma
+    }
+
+    const routerId = getBMP280RouterId();
+    if (!routerId) {
+      setError('BMP280 router bulunamadı');
+      return;
     }
 
     setLoading(true);
     setError(null);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5000/api/sensor-readings/latest/107', {
+      const response = await fetch(`http://localhost:5000/api/sensors/router/${routerId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -97,54 +125,59 @@ function DashboardCard03() {
 
       if (response.ok) {
         const result = await response.json();
-        if (result.success && result.data?.reading) {
-          const reading = result.data.reading;
+        if (result.success && result.data) {
+          const data = result.data;
+          console.log(`📊 Router ${routerId} BMP280 Data (${data.source}):`, data);
           setSensorData({
-            temperature: reading.parameters?.temperature || reading.temperature || null,
-            humidity: reading.parameters?.humidity || reading.humidity || null,
-            pressure: reading.parameters?.pressure || reading.pressure || null,
-            lastUpdate: reading.timestamp || new Date().toISOString(),
-            alertCount: calculateAlertCount(reading.parameters?.temperature || reading.temperature),
-            trendDirection: "stable"
+            temperature: data.temperature || null,
+            humidity: data.humidity || null,
+            pressure: data.pressure || null,
+            altitude: data.altitude || null,      // ✅ Altitude eklendi
+            lastUpdate: data.timestamp || new Date().toISOString(),
+            alertCount: calculateAlertCount(data.temperature),
+            trendDirection: "stable",
+            source: data.source || 'unknown'
           });
         } else {
-          // Simüle data - API'den veri gelmediğinde
-          setSensorData({
-            temperature: 35.2 + (Math.random() - 0.5) * 3,
-            humidity: 62 + (Math.random() - 0.5) * 8,
-            pressure: 1013.25 + (Math.random() - 0.5) * 10,
-            lastUpdate: new Date().toISOString()
-          });
+          console.log('⚠️ API response başarısız:', result);
+          setError('Veri alınamadı');
         }
       } else {
         throw new Error(`API Error: ${response.status}`);
       }
     } catch (err) {
-      console.error('Router 107 sensör verisi alınamadı:', err);
-      setError(err.message);
-      // Fallback simüle data
+      console.error('❌ BMP280 sensör verisi alınamadı:', err);
+      setError(`Bağlantı hatası: ${err.message}`);
+      // Hata durumunda null değerler göster - gerçek durum
       setSensorData({
-        temperature: 35.2 + (Math.random() - 0.5) * 3,
-        humidity: 62 + (Math.random() - 0.5) * 8,
-        pressure: 1013.25 + (Math.random() - 0.5) * 10,
-        lastUpdate: new Date().toISOString()
+        temperature: null,
+        humidity: null,
+        pressure: null,
+        altitude: null,       // ✅ Altitude hata durumu
+        lastUpdate: null,
+        alertCount: 0,
+        trendDirection: "stable",
+        source: 'error'
       });
     } finally {
       setLoading(false);
     }
   };
 
-  // İlk yükleme ve otomatik güncelleme
+  // İlk yükleme ve otomatik güncelleme - 10 dakikalık veri periyoduna uygun
   useEffect(() => {
-    fetchRouter107Data();
+    fetchBMP280Data();
 
-    // Her 30 saniyede bir güncelle
-    const interval = setInterval(fetchRouter107Data, 30000);
+    // Her 2 dakikada bir kontrol et (veri 10 dakikada bir geldiği için)
+    const interval = setInterval(fetchBMP280Data, 120000); // 2 dakika
     return () => clearInterval(interval);
-  }, []);
+  }, [hives]); // hives değişince yeniden çalış
 
-  // Router 107 kovanını bul
-  const router107Hive = hives?.find(hive => hive.sensor?.routerId === "107");
+  // BMP280 kovanını bul (dinamik)
+  const bmp280Hive = hives?.find(hive =>
+    hive.hardware?.routers?.some(r => r.routerType === 'bmp280') ||
+    hive.sensor?.routerId // ESKİ sistem uyumluluğu
+  );
 
   // Sıcaklık durumu analizi
   const getTemperatureStatus = (temp) => {
@@ -197,12 +230,20 @@ function DashboardCard03() {
           <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-1">
             🌡️ Router 107 - BMP280 Kovan Sıcaklığı
           </h2>
-          <div className="text-xs text-gray-500 dark:text-gray-400">
-            Optimal Aralık: 33-36°C
+          <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
+            <span>Optimal Aralık: 33-36°C</span>
+            {sensorData.source && (
+              <span className={`px-2 py-0.5 rounded-full text-xs ${sensorData.source === 'sensor'
+                ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+                : 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400'
+                }`}>
+                {sensorData.source === 'sensor' ? '📡 Gerçek Veri' : '🎯 Simüle Veri'}
+              </span>
+            )}
           </div>
         </div>
         <button
-          onClick={fetchRouter107Data}
+          onClick={fetchBMP280Data}
           disabled={loading}
           className={`px-3 py-1 text-xs rounded-lg transition-colors ${loading
             ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
@@ -213,16 +254,36 @@ function DashboardCard03() {
         </button>
       </header>
 
-      {/* Temperature Metrics */}
+      {/* Temperature & Pressure Metrics */}
       <div className="px-5 py-4">
-        <div className="grid grid-cols-3 gap-4 mb-4">
-          {/* Sadece Ortalama Sıcaklık */}
-          <div className="text-center col-span-3">
-            <div className="text-xl font-bold text-gray-800 dark:text-gray-100">
+        <div className="grid grid-cols-2 gap-6 mb-4">
+          {/* Sıcaklık */}
+          <div className="text-center">
+            <div className="text-2xl font-bold text-gray-800 dark:text-gray-100">
               {sensorData.temperature !== null ? sensorData.temperature.toFixed(1) : '--'}°C
             </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">
-              Ortalama
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              Kovan Sıcaklığı
+            </div>
+            <div className={`text-xs mt-1 px-2 py-1 rounded-full ${sensorData.temperature !== null && sensorData.temperature >= 33 && sensorData.temperature <= 36
+              ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+              : 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400'
+              }`}>
+              {sensorData.temperature !== null && sensorData.temperature >= 33 && sensorData.temperature <= 36 ? 'Optimal' : 'Dikkat'}
+            </div>
+          </div>
+
+          {/* Basınç */}
+          <div className="text-center">
+            <div className="text-2xl font-bold text-gray-800 dark:text-gray-100">
+              {sensorData.pressure !== null ? (sensorData.pressure / 100).toFixed(1) : '--'} hPa
+            </div>
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              Atmosfer Basıncı
+            </div>
+            <div className="text-xs mt-1 px-2 py-1 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
+              {sensorData.pressure !== null && sensorData.pressure > 101000 ? 'Yüksek' :
+                sensorData.pressure !== null && sensorData.pressure < 100000 ? 'Düşük' : 'Normal'}
             </div>
           </div>
         </div>
@@ -247,10 +308,36 @@ function DashboardCard03() {
           <div className="flex justify-between items-center">
             <span className="text-sm text-gray-600 dark:text-gray-300">Son Güncelleme:</span>
             <span className="text-sm text-gray-500 dark:text-gray-400">
-              {new Date(sensorData.lastUpdate).toLocaleTimeString('tr-TR')}
+              {sensorData.lastUpdate ? new Date(sensorData.lastUpdate).toLocaleTimeString('tr-TR') : '--:--'}
             </span>
           </div>
+
+          {/* Veri Kaynağı */}
+          {sensorData.source && (
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600 dark:text-gray-300">Veri Kaynağı:</span>
+              <span className={`text-xs font-medium px-2 py-1 rounded-full ${sensorData.source === 'sensor' ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400' :
+                sensorData.source === 'realtime' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' :
+                  sensorData.source === 'simulated' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400' :
+                    'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                }`}>
+                {sensorData.source === 'sensor' ? 'API' :
+                  sensorData.source === 'realtime' ? 'WebSocket' :
+                    sensorData.source === 'simulated' ? 'Simüle' : 'Hata'}
+              </span>
+            </div>
+          )}
         </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <div className="flex items-center text-sm text-red-700 dark:text-red-400">
+              <span className="mr-2">⚠️</span>
+              {error}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Temperature Trend Chart */}

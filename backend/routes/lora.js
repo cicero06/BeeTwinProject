@@ -91,15 +91,6 @@ router.post('/data', [
         .isFloat({ min: 0 })
         .withMessage('NO2 seviyesi 0 dan büyük olmalı'),
 
-    body('batteryLevel')
-        .isInt({ min: 0, max: 100 })
-        .withMessage('Batarya seviyesi 0-100 arası olmalı'),
-
-    body('signalStrength')
-        .optional()
-        .isInt({ min: -120, max: 0 })
-        .withMessage('Sinyal gücü -120 ile 0 arası olmalı'),
-
     body('timestamp')
         .optional()
         .isISO8601()
@@ -121,21 +112,18 @@ router.post('/data', [
             });
         }
 
-        const { deviceId, routerId, sensorId, sensorData, batteryLevel, signalStrength, timestamp } = req.body;
+        const { deviceId, routerId, sensorId, sensorData, timestamp } = req.body;
 
         console.log('📡 Wireless data received from:', deviceId);
         console.log('🎯 Router ID:', routerId, '- Sensor ID:', sensorId);
         console.log('📊 Data:', sensorData);
-        console.log('🔋 Battery:', batteryLevel + '%');
 
-        // Veriyi işle
+        // Veriyi işle (Battery ve Signal strength kaldırıldı)
         const processedData = await loraProcessor.processWirelessData({
             deviceId,
             routerId,
             sensorId,
             sensorData,
-            batteryLevel,
-            signalStrength: signalStrength || -999,
             receivedAt: new Date(),
             originalTimestamp: timestamp
         });

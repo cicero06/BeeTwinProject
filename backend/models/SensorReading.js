@@ -31,6 +31,17 @@ const sensorReadingSchema = new mongoose.Schema({
             max: [100, 'Nem %100 dan fazla olamaz']
         },
 
+        // Basınç (hPa)
+        pressure: {
+            type: Number,
+            min: [0, 'Basınç negatif olamaz']
+        },
+
+        // Yükseklik (m) - BMP280 için
+        altitude: {
+            type: Number
+        },
+
         // Ağırlık (kg)
         weight: {
             type: Number,
@@ -49,20 +60,29 @@ const sensorReadingSchema = new mongoose.Schema({
             min: [0, 'Titreşim negatif olamaz']
         },
 
+        // Gaz seviyeleri - MICS-4514, MQ2 için
+        co: Number,
+        no2: Number,
+        gasLevel: Number,
+        no2Level: Number,
+        smoke: Number,
+        lpg: Number,
+
         // Diğer sensör verileri için flexible field
         other: mongoose.Schema.Types.Mixed
     },
 
-    // Pil Seviyesi (%)
+    // 🔋 Donanım Bilgileri (Coordinator'dan gelen)
     batteryLevel: {
         type: Number,
         min: [0, 'Pil seviyesi negatif olamaz'],
         max: [100, 'Pil seviyesi %100 dan fazla olamaz']
     },
 
-    // Sinyal Gücü (dBm)
     signalStrength: {
-        type: Number
+        type: Number,
+        min: [-120, 'Sinyal gücü çok zayıf'],
+        max: [0, 'Sinyal gücü çok yüksek']
     },
 
     // Veri Kalitesi

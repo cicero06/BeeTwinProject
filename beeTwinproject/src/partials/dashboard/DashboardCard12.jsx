@@ -112,7 +112,18 @@ function DashboardCard12() {
       }
 
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:5000/api/sensor-readings/latest/${hive.sensor.routerId}`, {
+      // Router ID'sine göre doğru endpoint'i seç
+      let endpoint;
+      if (hive.sensor.routerId === 107) {
+        endpoint = 'http://localhost:5000/api/sensors/router-107';
+      } else if (hive.sensor.routerId === 108) {
+        endpoint = 'http://localhost:5000/api/sensors/router-108';
+      } else {
+        console.warn(`Bilinmeyen Router ID: ${hive.sensor.routerId}`);
+        return;
+      }
+
+      const response = await fetch(endpoint, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -121,18 +132,21 @@ function DashboardCard12() {
 
       if (response.ok) {
         const result = await response.json();
-        if (result.success && result.data?.reading) {
-          const reading = result.data.reading;
+        if (result.success && result.data) {
+          const data = result.data;
+          console.log(`📍 Router ${hive.sensor.routerId} Data (${data.source}):`, data);
           setSensorData({
-            temperature: reading.temperature || null,
-            humidity: reading.humidity || null,
-            weight: reading.weight || null,
-            airQuality: reading.temperature > 36 ? 'Warning' : 'Good',
-            lastUpdate: reading.timestamp
+            temperature: data.temperature || null,
+            humidity: data.humidity || null,
+            weight: data.weight || null,
+            pressure: data.pressure || null,
+            airQuality: data.temperature > 36 ? 'Warning' : 'Good',
+            lastUpdate: data.timestamp,
+            source: data.source || 'unknown'
           });
-          setRealTimeData(reading);
+          setRealTimeData(data);
         } else {
-          // NO FAKE DATA - Show actual "No Data" state
+          console.log('⚠️ API response başarısız:', result);
           setSensorData({
             temperature: null,
             humidity: null,

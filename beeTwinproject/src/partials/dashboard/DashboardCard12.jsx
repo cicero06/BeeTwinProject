@@ -112,16 +112,11 @@ function DashboardCard12() {
       }
 
       const token = localStorage.getItem('token');
-      // Router ID'sine göre doğru endpoint'i seç
-      let endpoint;
-      if (hive.sensor.routerId === 107) {
-        endpoint = 'http://localhost:5000/api/sensors/router-107';
-      } else if (hive.sensor.routerId === 108) {
-        endpoint = 'http://localhost:5000/api/sensors/router-108';
-      } else {
-        console.warn(`Bilinmeyen Router ID: ${hive.sensor.routerId}`);
-        return;
-      }
+      // Router ID'sine göre doğru endpoint'i oluştur
+      const routerId = hive.sensor.routerId;
+      const endpoint = `http://localhost:5000/api/sensors/router/${routerId}/latest`;
+
+      console.log(`📡 Fetching data for Router ${routerId} from:`, endpoint);
 
       const response = await fetch(endpoint, {
         headers: {

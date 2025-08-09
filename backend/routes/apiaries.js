@@ -1,12 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const auth = require('../middleware/auth');
+const { auth, requireBeekeeperOrAdmin } = require('../middleware/auth');
 const Apiary = require('../models/Apiary');
 
 // @route   GET /api/apiaries
 // @desc    Kullanıcının arılıklarını getir
-// @access  Private
-router.get('/', auth, async (req, res) => {
+// @access  Private (Beekeeper or Admin)
+router.get('/', auth, requireBeekeeperOrAdmin, async (req, res) => {
     try {
         console.log('🏡 Apiaries GET request - User:', req.user.userId);
 

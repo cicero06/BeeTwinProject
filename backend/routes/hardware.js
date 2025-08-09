@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
-const auth = require('../middleware/auth');
+const mongoose = require('mongoose');
+const { auth, requireBeekeeperOrAdmin } = require('../middleware/auth');
 const Hive = require('../models/Hive');
 const Apiary = require('../models/Apiary');
 
@@ -328,6 +329,104 @@ router.get('/list', auth, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Hardware listesi alınamadı',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * @route   GET /api/hardware/routers/:hiveId
+ * @desc    Get router configurations for a specific hive
+ * @access  Private
+ */
+router.get('/routers/:hiveId', auth, async (req, res) => {
+    try {
+        const { hiveId } = req.params;
+
+        // Kovan kontrolü - POPULATE'ı kontrol et
+        console.log('🔍 FETCHING HIVE:', hiveId);
+        const hive = await Hive.findById(hiveId)
+            .populate('apiary')
+            .select('+hardware +sensors +hardwareDetails'); // Explicit select
+
+        if (!hive) {
+            return res.status(404).json({
+                success: false,
+                message: 'Kovan bulunamadı'
+            });
+        }
+
+        console.log('🔍 HIVE FOUND:', hive.name);
+        console.log('🔍 FULL HIVE OBJECT KEYS:', Object.keys(hive.toObject()));
+        console.log('🔍 HIVE TOOBJECT:', JSON.stringify(hive.toObject(), null, 2));
+
+        // Eğer populate çalışmadıysa manuel al
+        let apiaryOwnerId;
+        if (typeof hive.apiary === 'string' || hive.apiary instanceof mongoose.Types.ObjectId) {
+            console.log('⚠️ POPULATE FAILED - Manual apiary fetch needed');
+            const Apiary = require('../models/Apiary');
+            const apiary = await Apiary.findById(hive.apiary);
+            apiaryOwnerId = apiary?.ownerId?.toString();
+            console.log('🔧 MANUAL APIARY OWNER:', apiaryOwnerId);
+        } else {
+            console.log('✅ POPULATE SUCCESS');
+            apiaryOwnerId = hive.apiary?.ownerId?.toString();
+        }
+
+        // Debug authorization - Manuel string conversion
+        const userIdString = req.user?.id ? String(req.user.id) : null;
+        console.log('🔍 AUTHORIZATION DEBUG:');
+        console.log('JWT User Original:', req.user?.id);
+        console.log('JWT User String:', userIdString);
+        console.log('JWT User Type:', typeof userIdString);
+        console.log('Apiary Owner:', apiaryOwnerId);
+        console.log('Apiary Owner Type:', typeof apiaryOwnerId);
+        console.log('Match:', apiaryOwnerId === userIdString);
+
+        // Yetkili kullanıcı kontrolü - Manuel string conversion
+        if (apiaryOwnerId !== userIdString) {
+            console.log('❌ AUTHORIZATION FAILED');
+            console.log('Expected:', apiaryOwnerId);
+            console.log('Actual:', userIdString);
+            return res.status(403).json({
+                success: false,
+                message: 'Bu kovana erişim yetkiniz yok'
+            });
+        }
+
+        console.log('✅ AUTHORIZATION SUCCESS');
+
+        // Router konfigürasyonlarını al
+        const routers = hive.sensor?.hardwareDetails?.routers || [];
+        console.log('🔍 HIVE SENSOR:', hive.sensor);
+        console.log('🔍 HIVE SENSOR HARDWAREDETAILS:', hive.sensor?.hardwareDetails);
+        console.log('🔍 ROUTERS FOUND:', routers.length, 'routers');
+        console.log('🔍 ROUTERS DATA:', routers);
+
+        res.json({
+            success: true,
+            data: {
+                hiveId: hive._id,
+                hiveName: hive.name,
+                routers: routers.map(router => ({
+                    routerId: router.routerId,
+                    routerType: router.routerType,
+                    address: router.address,
+                    sensorIds: router.sensorIds,
+                    dataKeys: router.dataKeys,
+                    isActive: router.isActive,
+                    lastSeen: router.lastSeen
+                })),
+                totalRouters: routers.length,
+                activeRouters: routers.filter(r => r.isActive).length
+            }
+        });
+
+    } catch (error) {
+        console.error('Router config error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Router konfigürasyonları alınamadı',
             error: error.message
         });
     }

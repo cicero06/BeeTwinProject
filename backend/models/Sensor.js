@@ -7,6 +7,17 @@ const sensorSchema = new mongoose.Schema({
         unique: true,
         trim: true
     },
+    routerId: {
+        type: String,
+        required: [true, 'Router ID zorunludur'],
+        trim: true,
+        index: true
+    },
+    sensorId: {
+        type: String,
+        required: [true, 'Sensor ID zorunludur'],
+        trim: true
+    },
     name: {
         type: String,
         required: [true, 'Sensör adı zorunludur'],
@@ -58,9 +69,10 @@ const sensorSchema = new mongoose.Schema({
 });
 
 // Indexes
-sensorSchema.index({ deviceId: 1 }, { unique: true });
 sensorSchema.index({ ownerId: 1 });
 sensorSchema.index({ apiaryId: 1 });
 sensorSchema.index({ status: 1 });
+sensorSchema.index({ routerId: 1 });
+sensorSchema.index({ routerId: 1, ownerId: 1 });
 
 module.exports = mongoose.model('Sensor', sensorSchema);

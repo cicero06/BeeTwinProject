@@ -48,7 +48,7 @@ class HardwareService {
     /**
      * Hardware'i bir kovandan diğerine transfer et
      */
-    static async transferHardware(fromHiveId, toHiveId) {
+    static async transferHardware(fromHiveId, toHiveId, hardwareData) {
         try {
             const token = localStorage.getItem('token');
             const response = await fetch(`${API_BASE_URL}/hardware/transfer`, {
@@ -80,6 +80,40 @@ class HardwareService {
             return {
                 success: false,
                 message: error.message || 'Hardware transfer sırasında hata oluştu'
+            };
+        }
+    }
+
+    /**
+     * 🎯 Get router configurations for a hive (API SOLUTION)
+     */
+    static async getRouterConfigurations(hiveId) {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_BASE_URL}/hardware/routers/${hiveId}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || 'Router konfigürasyonları alınamadı');
+            }
+
+            return {
+                success: true,
+                data: data.data,
+                message: data.message
+            };
+
+        } catch (error) {
+            console.error('Router config error:', error);
+            return {
+                success: false,
+                message: error.message || 'Router konfigürasyonları alınırken hata oluştu'
             };
         }
     }

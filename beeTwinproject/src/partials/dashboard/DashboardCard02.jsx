@@ -25,7 +25,7 @@ import { adjustColorOpacity, getCssVariable } from '../../utils/Utils';
  */
 
 function DashboardCard02() {
-  const { user, hives, apiaries } = useAuth();
+  const { user, hives, apiaries, coordinatorStatus } = useAuth();
   const [alertData, setAlertData] = useState({
     criticalAlerts: 0,
     warningAlerts: 0,
@@ -35,51 +35,139 @@ function DashboardCard02() {
     networkStatus: "Normal"
   });
 
-  // Generate dynamic alerts based on user's hives
+  // Router veri durumları - BT107 ve BT108
+  const [routerData, setRouterData] = useState({
+    BT107: { status: 'loading', data: null, lastUpdate: null },
+    BT108: { status: 'loading', data: null, lastUpdate: null }
+  });
+
+  // Router verilerini çek
   useEffect(() => {
-    if (hives && hives.length > 0) {
+    const fetchRouterData = async () => {
+      if (!user?.token) return;
+
+      const routers = ['107', '108'];
+      const newRouterData = { ...routerData };
+
+      for (const routerId of routers) {
+        try {
+          const response = await fetch(`/api/sensors/router/${routerId}/latest`, {
+            headers: {
+              'Authorization': `Bearer ${user.token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            const deviceId = `BT${routerId}`;
+            
+            newRouterData[deviceId] = {
+              status: result.data ? 'active' : 'no_data',
+              data: result.data,
+              lastUpdate: new Date(),
+              routerType: result.routerType
+            };
+          } else {
+            newRouterData[`BT${routerId}`] = {
+              status: 'error',
+              data: null,
+              lastUpdate: new Date()
+            };
+          }
+        } catch (error) {
+          console.error(`❌ Router ${routerId} data fetch error:`, error);
+          newRouterData[`BT${routerId}`] = {
+            status: 'error',
+            data: null,
+            lastUpdate: new Date()
+          };
+        }
+      }
+
+      setRouterData(newRouterData);
+    };
+
+    fetchRouterData();
+    const interval = setInterval(fetchRouterData, 15000); // 15 saniyede bir güncelle
+
+    return () => clearInterval(interval);
+  }, [user?.token]);
+
+  // Generate dynamic alerts based on coordinator and hive data
+  useEffect(() => {
+    if (coordinatorStatus && coordinatorStatus.hiveDetails.length > 0) {
       const alerts = [];
       let criticalCount = 0;
       let warningCount = 0;
       let infoCount = 0;
 
-      hives.forEach((hive, index) => {
-        // Simulated alerts based on hive data
-        if (hive.sensor && !hive.sensor.isConnected) {
+      // Use coordinator data for accurate alerts
+      coordinatorStatus.hiveDetails.forEach((hiveDetail) => {
+        // Critical: Disconnected hives
+        if (hiveDetail.status === 'disconnected' || hiveDetail.status === 'error') {
           alerts.push({
             id: alerts.length + 1,
             type: "critical",
-            message: `${hive.name}: Sensör bağlantısı kesildi`,
+            message: `${hiveDetail.name}: Koordinatör bağlantısı kesildi`,
             time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
-            hiveId: hive._id
+            hiveId: hiveDetail.id,
+            source: 'coordinator'
           });
           criticalCount++;
         }
 
-        // Random temperature warning for demonstration
-        if (Math.random() > 0.7) {
+        // Warning: Connected but no recent data
+        if (hiveDetail.status === 'connected' && !hiveDetail.hasRecentData) {
           alerts.push({
             id: alerts.length + 1,
             type: "warning",
-            message: `${hive.name}: Sıcaklık kontrolü gerekli`,
-            time: new Date(Date.now() - Math.random() * 3600000).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
-            hiveId: hive._id
+            message: `${hiveDetail.name}: Sensör verisi gecikmiş`,
+            time: hiveDetail.lastSeen ? 
+              new Date(hiveDetail.lastSeen).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) :
+              'Bilinmiyor',
+            hiveId: hiveDetail.id,
+            source: 'coordinator'
           });
           warningCount++;
         }
 
-        // Info alerts for recent activity
-        if (index < 3) {
+        // Info: Healthy and connected hives
+        if (hiveDetail.status === 'connected' && hiveDetail.hasRecentData) {
           alerts.push({
             id: alerts.length + 1,
             type: "info",
-            message: `${hive.name}: Son veri alımı başarılı`,
-            time: new Date(Date.now() - Math.random() * 1800000).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
-            hiveId: hive._id
+            message: `${hiveDetail.name}: Tüm sistemler normal (${hiveDetail.routerCount} router)`,
+            time: hiveDetail.lastSeen ? 
+              new Date(hiveDetail.lastSeen).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) :
+              'Şimdi',
+            hiveId: hiveDetail.id,
+            source: 'coordinator'
           });
           infoCount++;
         }
       });
+
+      // Add network status alerts
+      if (coordinatorStatus.connectionRate < 50) {
+        alerts.unshift({
+          id: 0,
+          type: "critical",
+          message: `Ağ durumu kritik: %${coordinatorStatus.connectionRate} bağlantı oranı`,
+          time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+          source: 'network'
+        });
+        criticalCount++;
+      } else if (coordinatorStatus.connectionRate < 80) {
+        alerts.unshift({
+          id: 0,
+          type: "warning",
+          message: `Ağ durumu uyarı: %${coordinatorStatus.connectionRate} bağlantı oranı`,
+          time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+          source: 'network'
+        });
+        warningCount++;
+      }
 
       setAlertData({
         criticalAlerts: criticalCount,
@@ -87,10 +175,58 @@ function DashboardCard02() {
         infoAlerts: infoCount,
         totalAlerts: alerts.length,
         recentAlerts: alerts.slice(0, 5), // Show only latest 5
-        networkStatus: criticalCount > 0 ? "Uyarı" : "Normal"
+        networkStatus: criticalCount > 0 ? "Kritik" : 
+                      warningCount > 0 ? "Uyarı" : "Normal",
+        coordinatorConnectionRate: coordinatorStatus.connectionRate,
+        lastCoordinatorActivity: coordinatorStatus.lastActivity
+      });
+    } else if (hives && hives.length > 0) {
+      // Fallback to legacy hive data when coordinator data unavailable
+      const alerts = [];
+      let criticalCount = 0;
+      let warningCount = 0;
+      let infoCount = 0;
+
+      hives.forEach((hive, index) => {
+        // Check sensor connection status
+        if (hive.sensor && !hive.sensor.isConnected) {
+          alerts.push({
+            id: alerts.length + 1,
+            type: "critical",
+            message: `${hive.name}: Sensör bağlantısı kesildi`,
+            time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+            hiveId: hive._id,
+            source: 'legacy'
+          });
+          criticalCount++;
+        }
+
+        // Random alerts for demonstration when real data unavailable
+        if (Math.random() > 0.7) {
+          alerts.push({
+            id: alerts.length + 1,
+            type: "warning",
+            message: `${hive.name}: Veri kontrolü gerekli`,
+            time: new Date(Date.now() - Math.random() * 3600000).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+            hiveId: hive._id,
+            source: 'legacy'
+          });
+          warningCount++;
+        }
+      });
+
+      setAlertData({
+        criticalAlerts: criticalCount,
+        warningAlerts: warningCount,
+        infoAlerts: Math.max(1, hives.length - criticalCount - warningCount),
+        totalAlerts: alerts.length,
+        recentAlerts: alerts.slice(0, 5),
+        networkStatus: criticalCount > 0 ? "Kritik" : "Normal",
+        coordinatorConnectionRate: null,
+        lastCoordinatorActivity: null
       });
     }
-  }, [hives]);
+  }, [coordinatorStatus, hives]);
 
   // Default alert data when no user data is available
   const defaultAlertData = {
@@ -250,6 +386,59 @@ function DashboardCard02() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Router Veri Durumu */}
+        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            Router Veri Akışı:
+          </h4>
+          <div className="space-y-3">
+            {Object.entries(routerData).map(([deviceId, router]) => (
+              <div key={deviceId} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                      {deviceId}
+                    </span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      ({router.routerType || 'Unknown'})
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <div className={`h-2 w-2 rounded-full ${
+                      router.status === 'active' ? 'bg-green-500' : 
+                      router.status === 'no_data' ? 'bg-amber-500' : 'bg-red-500'
+                    }`}></div>
+                    <span className="text-xs text-gray-600 dark:text-gray-300">
+                      {router.status === 'active' ? 'Aktif' : 
+                       router.status === 'no_data' ? 'Veri Yok' : 'Hata'}
+                    </span>
+                  </div>
+                </div>
+                
+                {/* Veri detayları */}
+                {router.data && (
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {Object.entries(router.data.data || {}).map(([key, value]) => (
+                      <div key={key} className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">{key}:</span>
+                        <span className="font-medium text-gray-800 dark:text-gray-200">
+                          {typeof value === 'number' ? value.toFixed(2) : value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {router.lastUpdate && (
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                    Son güncelleme: {router.lastUpdate.toLocaleTimeString('tr-TR')}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

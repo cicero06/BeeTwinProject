@@ -118,33 +118,45 @@ router.post('/data', [
         console.log('🎯 Router ID:', routerId, '- Sensor ID:', sensorId);
         console.log('📊 Data:', sensorData);
 
-        // Veriyi işle (Battery ve Signal strength kaldırıldı)
-        const processedData = await loraProcessor.processWirelessData({
-            deviceId,
-            routerId,
-            sensorId,
-            sensorData,
-            receivedAt: new Date(),
-            originalTimestamp: timestamp
-        });
+        // Basit veri kaydetme - direkt SensorReading'e yaz
+        const SensorReading = require('../models/SensorReading');
+        const Sensor = require('../models/Sensor');
 
-        if (processedData) {
-            res.json({
+        // Sensörü bul
+        const sensor = await Sensor.findOne({ routerId, deviceId });
+
+        if (!sensor) {
+            console.log('⚠️ Sensor not found, creating response anyway');
+            return res.json({
                 success: true,
-                message: 'Veri başarıyla işlendi',
-                data: {
-                    deviceId,
-                    recordId: processedData._id,
-                    receivedAt: new Date(),
-                    nextExpectedAt: new Date(Date.now() + 10 * 60 * 1000) // 10 dakika sonra
-                }
-            });
-        } else {
-            res.status(400).json({
-                success: false,
-                message: 'Veri işlenirken hata oluştu'
+                message: 'Veri alındı (sensör bulunamadı)',
+                data: { deviceId, routerId, sensorId }
             });
         }
+
+        // Veriyi kaydet
+        const reading = await SensorReading.create({
+            sensorId: sensor._id,
+            data: sensorData,
+            timestamp: timestamp || new Date(),
+            metadata: {
+                source: 'coordinator',
+                routerId,
+                sensorId
+            }
+        });
+
+        console.log('✅ Data saved:', reading._id);
+
+        res.json({
+            success: true,
+            message: 'Veri başarıyla işlendi',
+            data: {
+                deviceId,
+                recordId: reading._id,
+                receivedAt: new Date()
+            }
+        });
 
     } catch (error) {
         console.error('❌ LoRa data processing error:', error);

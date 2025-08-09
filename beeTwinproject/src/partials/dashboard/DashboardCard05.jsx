@@ -1,204 +1,168 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import LineChart from '../../charts/LineChart01';
-import { chartAreaGradient } from '../../charts/ChartjsConfig';
-import EditMenu from '../../components/DropdownEditMenu';
-import useRealTimeData from '../../hooks/useRealTimeData';
 import { useAuth } from '../../contexts/AuthContext';
-import { adjustColorOpacity, getCssVariable } from '../../utils/Utils';
 
 /**
- * DashboardCard05 - Kovan Ağırlık Sensörü (HX711)
+ * DashboardCard05 - Load Cell Sensör Durumu (HX711)
  * 
- * Bu bileşen, kovan ağırlık değişimlerini izleyen özelleştirilmiş dashboard kartıdır.
- * Ağırlık artışı/azalışı bal üretimi ve arı popülasyonu hakkında bilgi verir.
+ * Bu bileşen, load cell sensöründen gelen ağırlık verilerini izler.
+ * Şu anda veri bağlantısı kurulmamış durumda olduğu için
+ * bağlantı sorunları ve sistem durumu gösterilir.
  * 
  * Özellikler:
- * - Gerçek zamanlı ağırlık ölçümleri
- * - Trend analizi (artış/azalış)
- * - Haftalık/aylık değişim gösterimi
+ * - Load cell sensör bağlantı durumu
+ * - Veri alınamıyor uyarıları
+ * - Gelecekte: Gerçek zamanlı ağırlık ölçümleri
  * 
- * Not: HX711 load cell sensörü verilerini kullanır
+ * Veri Kaynağı: Backend /api/sensors/router/109/latest endpoint'i (gelecekte)
  */
 function DashboardCard05() {
-  const { user, hives } = useAuth();
-  const { sensorData: realTimeSensorData, connectionStatus } = useRealTimeData();
+  const { user } = useAuth();
 
-  const [loading, setLoading] = useState(true);
-  const [weightStats, setWeightStats] = useState({
-    currentWeight: null,
-    previousWeight: null,
-    trend: 0,
-    trendDirection: 'stable',
-    lastUpdate: null,
-    source: null
+  const [sensorStatus, setSensorStatus] = useState({
+    isConnected: false,
+    lastAttempt: null,
+    errorMessage: 'Load cell sensör bağlantısı kurulmamış',
+    expectedRouter: '109', // Load cell için gelecekte kullanılacak router ID
+    sensorType: 'HX711',
+    connectionAttempts: 0,
+    nextRetry: null
   });
-  const [error, setError] = useState(null);
 
-  // Ağırlık verilerini işle
+  // Bağlantı durumu simülasyonu
   useEffect(() => {
-    if (!user || !realTimeSensorData || realTimeSensorData.length === 0) {
-      setLoading(false);
-      return;
-    }
+    const simulateConnectionAttempts = () => {
+      const now = new Date();
+      const nextRetry = new Date(now.getTime() + 30000); // 30 saniye sonra
 
-    console.log('🏋️ Processing weight data for user:', user.email);
+      setSensorStatus(prev => ({
+        ...prev,
+        lastAttempt: now.toISOString(),
+        nextRetry: nextRetry.toISOString(),
+        connectionAttempts: prev.connectionAttempts + 1,
+        errorMessage: prev.connectionAttempts > 3 
+          ? 'Load cell sensör bulunamadı. Donanım kontrolü gerekli.'
+          : 'Load cell sensör bağlantısı deneniyor...'
+      }));
+    };
 
-    // Kullanıcının Router ID'lerini bul
-    const userRouterIds = hives?.map(hive => hive.sensor?.routerId).filter(Boolean) || [];
-    console.log('📍 User Router IDs:', userRouterIds);
+    // İlk deneme
+    simulateConnectionAttempts();
 
-    // Ağırlık verilerini filtrele
-    let weightData = [];
+    // Her 30 saniyede bir bağlantı denemesi simüle et
+    const interval = setInterval(simulateConnectionAttempts, 30000);
 
-    if (userRouterIds.length > 0) {
-      // Kullanıcının Router ID'leriyle eşleşen verileri bul
-      weightData = realTimeSensorData.filter(data => {
-        const dataRouterId = data.routerId || data.router_id || data.deviceId || data.device_id;
-        return userRouterIds.includes(dataRouterId);
-      });
-    } else {
-      // Geçici: Router 109 ağırlık verilerini kullan
-      weightData = realTimeSensorData.filter(data => {
-        const dataRouterId = data.routerId || data.router_id || data.deviceId || data.device_id;
-        return dataRouterId === "109" || dataRouterId === 109;
-      });
-    }
+    return () => clearInterval(interval);
+  }, []);
 
-    console.log('⚖️ Found weight data:', weightData.length, 'records');
-
-    if (weightData.length > 0) {
-      // En son ağırlık değeri
-      const latestData = weightData[weightData.length - 1];
-      const currentWeight = latestData.weight || latestData.parameters?.weight || 0;
-
-      // Basit trend hesaplaması (son 2 veri)
-      let trend = 0;
-      if (weightData.length >= 2) {
-        const previousData = weightData[weightData.length - 2];
-        const previousWeight = previousData.weight || previousData.parameters?.weight || 0;
-        trend = currentWeight - previousWeight;
-      }
-
-      setWeightStats({
-        currentWeight: Number(currentWeight).toFixed(1),
-        trend: Number(trend).toFixed(2),
-        lastUpdate: latestData.timestamp || new Date().toISOString()
-      });
-
-      console.log('✅ Weight stats updated:', { currentWeight, trend });
-    } else {
-      console.log('❌ No weight data found');
-      setWeightStats({
-        currentWeight: 0,
-        trend: 0,
-        lastUpdate: null
-      });
-    }
-
-    setLoading(false);
-  }, [user, hives, realTimeSensorData]);
-
-  // Chart data for weight trend
-  const chartData = {
-    labels: ['6 saat önce', '4 saat önce', '2 saat önce', 'Şimdi'],
-    datasets: [
-      {
-        label: 'Ağırlık Trendi',
-        data: [45.2, 45.8, 46.1, parseFloat(weightStats.currentWeight) || 0],
-        borderColor: getCssVariable('--color-blue-500') || '#3B82F6',
-        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-        borderWidth: 2,
-        tension: 0.4,
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        fill: true
-      }
-    ]
+  // Zaman formatı
+  const formatTime = (timestamp) => {
+    if (!timestamp) return 'Henüz denenmedi';
+    return new Date(timestamp).toLocaleTimeString('tr-TR');
   };
-
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        display: false
-      }
-    },
-    scales: {
-      x: {
-        display: false
-      },
-      y: {
-        display: false
-      }
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex flex-col col-span-full sm:col-span-6 xl:col-span-4 bg-white dark:bg-gray-800 shadow-sm rounded-xl">
-        <div className="px-5 pt-5">
-          <div className="animate-pulse">
-            <div className="h-4 bg-gray-200 rounded w-1/3 mb-2"></div>
-            <div className="h-8 bg-gray-200 rounded w-1/2"></div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="flex flex-col col-span-full sm:col-span-6 xl:col-span-4 bg-white dark:bg-gray-800 shadow-sm rounded-xl">
+    <div className="flex flex-col col-span-full sm:col-span-6 xl:col-span-4 bg-white dark:bg-gray-800 shadow-xs rounded-xl">
       <div className="px-5 pt-5">
         <header className="flex justify-between items-start mb-2">
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">
-            Ağırlık Sensörü
-          </h2>
-          <EditMenu align="right" className="relative inline-flex">
-            <li>
-              <Link className="font-medium text-sm text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-200 flex py-1 px-3" to="#0">
-                Detaylı Görünüm
-              </Link>
-            </li>
-          </EditMenu>
+          {/* Icon */}
+          <div className="flex items-center">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-red-500/10 mr-3">
+              <span className="text-red-600 dark:text-red-400 text-2xl">⚖️</span>
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-1">
+                Load Cell Sensör
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                HX711 Ağırlık Sensörü
+              </p>
+            </div>
+          </div>
+          
+          {/* Status indicator */}
+          <div className="flex items-center">
+            <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+            <span className="text-xs text-red-600 dark:text-red-400 ml-2">Bağlantı Yok</span>
+          </div>
         </header>
 
-        <div className="flex items-start">
-          <div className="text-3xl font-bold text-gray-800 dark:text-gray-100 mr-2">
-            {weightStats.currentWeight}
+        {/* Bağlantı Durumu */}
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-4">
+          <div className="flex items-center mb-3">
+            <div className="text-red-600 dark:text-red-400 mr-2 text-xl">🔌</div>
+            <div>
+              <h3 className="text-red-800 dark:text-red-200 font-medium text-sm">
+                Sensör Bağlantısı Bulunamadı
+              </h3>
+              <p className="text-red-700 dark:text-red-300 text-xs">
+                {sensorStatus.errorMessage}
+              </p>
+            </div>
           </div>
-          <div className="text-sm text-gray-500 dark:text-gray-400">kg</div>
+
+          <div className="space-y-2 text-xs">
+            <div className="flex justify-between">
+              <span className="text-red-700 dark:text-red-300">Beklenen Router:</span>
+              <span className="text-red-800 dark:text-red-200 font-mono">BT{sensorStatus.expectedRouter}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-red-700 dark:text-red-300">Sensör Tipi:</span>
+              <span className="text-red-800 dark:text-red-200">{sensorStatus.sensorType}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-red-700 dark:text-red-300">Son Deneme:</span>
+              <span className="text-red-800 dark:text-red-200">{formatTime(sensorStatus.lastAttempt)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-red-700 dark:text-red-300">Deneme Sayısı:</span>
+              <span className="text-red-800 dark:text-red-200">{sensorStatus.connectionAttempts}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-red-700 dark:text-red-300">Sonraki Deneme:</span>
+              <span className="text-red-800 dark:text-red-200">{formatTime(sensorStatus.nextRetry)}</span>
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center mt-2">
-          <div className={`text-sm font-medium ${parseFloat(weightStats.trend) >= 0
-            ? 'text-green-600 dark:text-green-400'
-            : 'text-red-600 dark:text-red-400'
-            }`}>
-            {parseFloat(weightStats.trend) >= 0 ? '+' : ''}{weightStats.trend} kg
+        {/* Gelecek Özellikler */}
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+          <div className="flex items-center mb-2">
+            <div className="text-blue-600 dark:text-blue-400 mr-2 text-lg">🔮</div>
+            <h3 className="text-blue-800 dark:text-blue-200 font-medium text-sm">
+              Planlanan Özellikler
+            </h3>
           </div>
-          <div className="text-sm text-gray-500 dark:text-gray-400 ml-1">
-            son ölçümden beri
-          </div>
+          
+          <ul className="space-y-1 text-xs text-blue-700 dark:text-blue-300">
+            <li className="flex items-center">
+              <span className="w-1 h-1 bg-blue-600 rounded-full mr-2"></span>
+              Gerçek zamanlı ağırlık ölçümü
+            </li>
+            <li className="flex items-center">
+              <span className="w-1 h-1 bg-blue-600 rounded-full mr-2"></span>
+              Bal üretimi trend analizi
+            </li>
+            <li className="flex items-center">
+              <span className="w-1 h-1 bg-blue-600 rounded-full mr-2"></span>
+              Günlük/haftalık ağırlık değişimi
+            </li>
+            <li className="flex items-center">
+              <span className="w-1 h-1 bg-blue-600 rounded-full mr-2"></span>
+              Alarm sistemi (hırsızlık/saldırı)
+            </li>
+          </ul>
         </div>
-      </div>
 
-      {/* Chart */}
-      <div className="flex-grow max-h-[128px] px-5 pb-5">
-        <LineChart data={chartData} options={chartOptions} width={389} height={128} />
-      </div>
-
-      {/* Connection Status */}
-      <div className="px-5 pb-3">
-        <div className="flex items-center text-xs text-gray-500 dark:text-gray-400">
-          <div className={`w-2 h-2 rounded-full mr-2 ${connectionStatus ? 'bg-green-500' : 'bg-red-500'}`}></div>
-          {connectionStatus ? 'Bağlı' : 'Bağlantı Yok'}
-          {weightStats.lastUpdate && (
-            <span className="ml-2">
-              • Son güncelleme: {new Date(weightStats.lastUpdate).toLocaleTimeString('tr-TR')}
-            </span>
-          )}
+        {/* Teknik Detaylar */}
+        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex justify-between items-center text-xs text-gray-500 dark:text-gray-400">
+            <span>Load Cell Sensör Modülü</span>
+            <span className="font-mono">HX711 ADC</span>
+          </div>
+          <div className="flex justify-between items-center text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <span>Otomatik yeniden deneme</span>
+            <span>30 saniye</span>
+          </div>
         </div>
       </div>
     </div>

@@ -1,63 +1,241 @@
 const express = require('express');
 const router = express.Router();
-const auth = require('../middleware/auth');
+const { auth, requireBeekeeperOrAdmin } = require('../middleware/auth');
 const Sensor = require('../models/Sensor');
 const SensorReading = require('../models/SensorReading');
 
-// @route   GET /api/sensors/user-routers
-// @desc    Kullanıcının tüm router verilerini getir
-// @access  Private
-router.get('/user-routers', auth, async (req, res) => {
+// Helper function - Router için son veri alma
+async function getLatestRouterData(routerId, userId) {
     try {
-        console.log('🔍 User routers data request - User:', req.user.userId);
-
-        // Kullanıcının tüm sensörlerini bul
-        const sensors = await Sensor.find({
-            ownerId: req.user.userId
+        // Device ID formatına çevir (107 → BT107)
+        const deviceId = `BT${routerId}`;
+        
+        // Router'a ait sensörü deviceId ile bul
+        const sensor = await Sensor.findOne({
+            deviceId: deviceId,
+            ownerId: userId
         });
 
-        if (!sensors || sensors.length === 0) {
-            console.log('⚠️ No sensors found for user:', req.user.userId);
+        if (!sensor) {
+            console.log(`⚠️ Sensor not found for device ${deviceId} and user ${userId}`);
+            return null;
+        }
+
+        // Router 107 ve 108 için özel işlem: Son 5 kaydı al ve birleştir
+        if (routerId === '107' || routerId === '108') {
+            const recentReadings = await SensorReading.find({
+                sensorId: sensor._id
+            }).sort({ timestamp: -1 }).limit(5);
+
+            if (recentReadings.length > 0) {
+                // Tüm verileri birleştir - her reading'in data'sını ekle
+                const combinedData = {};
+                let latestTimestamp = recentReadings[0].timestamp;
+                let latestBattery = recentReadings[0].batteryLevel;
+                let latestSignal = recentReadings[0].signalStrength;
+
+                // Son 5 kayıttaki tüm dataları birleştir
+                recentReadings.forEach(reading => {
+                    if (reading.data) {
+                        // Her field'ı ayrı ayrı kontrol et ve ekle
+                        Object.keys(reading.data).forEach(key => {
+                            if (reading.data[key] !== null && reading.data[key] !== undefined) {
+                                combinedData[key] = reading.data[key];
+                            }
+                        });
+                    }
+                });
+
+                console.log(`🔄 Router ${routerId} combined data:`, combinedData);
+
+                // Field mapping: Koordinatör formatını standart formata çevir
+                const mappedData = {
+                    // Mevcut veriler
+                    ...combinedData,
+                    // Field mapping
+                    temperature: combinedData.WT || combinedData.temperature,
+                    pressure: combinedData.PR || combinedData.pressure,
+                    humidity: combinedData.WH || combinedData.humidity,
+                    co: combinedData.CO || combinedData.co,
+                    no2: combinedData.NO || combinedData.no2,
+                    // Meta veriler
+                    timestamp: latestTimestamp,
+                    batteryLevel: latestBattery,
+                    signalStrength: latestSignal,
+                    sensorTypes: sensor.sensorTypes
+                };
+
+                console.log(`🔄 Router ${routerId} mapped data:`, {
+                    original: combinedData,
+                    mapped: mappedData
+                });
+
+                return mappedData;
+            }
+        } else {
+            // Diğer router'lar için normal işlem
+            const latestReading = await SensorReading.findOne({
+                sensorId: sensor._id
+            }).sort({ timestamp: -1 });
+
+            if (latestReading) {
+                // Field mapping: Koordinatör formatını standart formata çevir
+                const mappedData = {
+                    // Mevcut veriler
+                    ...latestReading.data,
+                    // Field mapping
+                    temperature: latestReading.data.WT || latestReading.data.temperature,
+                    pressure: latestReading.data.PR || latestReading.data.pressure,
+                    humidity: latestReading.data.WH || latestReading.data.humidity,
+                    co: latestReading.data.CO || latestReading.data.co,
+                    no2: latestReading.data.NO || latestReading.data.no2,
+                    // Meta veriler
+                    timestamp: latestReading.timestamp,
+                    batteryLevel: latestReading.batteryLevel,
+                    signalStrength: latestReading.signalStrength,
+                    sensorTypes: sensor.sensorTypes
+                };
+
+                return mappedData;
+            }
+        }
+
+        return null;
+    } catch (error) {
+        console.error(`❌ Error getting latest data for router ${routerId}:`, error);
+        return null;
+    }
+}
+
+// @route   GET /api/sensors/hive/:hiveId/routers
+// @desc    Belirli bir kovan için tüm router verilerini getir
+// @access  Private
+router.get('/hive/:hiveId/routers', auth, async (req, res) => {
+    try {
+        const { hiveId } = req.params;
+        console.log('🏠 Hive routers data request - Hive:', hiveId, 'User:', req.user.userId);
+
+        // Hive'a ait tüm router'ları bul (authentication check dahil)
+        const Hive = require('../models/Hive');
+        const Apiary = require('../models/Apiary');
+
+        // Kullanıcının kovanını bul
+        const hive = await Hive.findById(hiveId).populate('apiary');
+
+        if (!hive || !hive.apiary || hive.apiary.ownerId.toString() !== req.user.userId.toString()) {
             return res.status(404).json({
                 success: false,
-                message: 'Sensör bulunamadı'
+                message: 'Kovan bulunamadı veya erişim yetkisi yok'
             });
         }
 
         const routerData = {};
 
-        // Her sensör için son veriyi al
-        for (const sensor of sensors) {
-            const latestReading = await SensorReading.findOne({
-                sensorId: sensor._id
-            }).sort({ timestamp: -1 });
+        // Hive'ın hardware konfigürasyonundaki router'ları al
+        if (hive.hardware && hive.hardware.routers) {
+            for (const router of hive.hardware.routers) {
+                if (router.isActive && router.routerId) {
+                    // Bu router için son veriyi al
+                    const latestData = await getLatestRouterData(router.routerId);
 
-            const routerId = sensor.deviceId.replace('BT', ''); // BT100 → 100
-
-            routerData[routerId] = {
-                routerId: routerId,
-                deviceId: sensor.deviceId,
-                sensorName: sensor.name,
-                sensorType: sensor.type,
-                data: latestReading ? latestReading.data : null,
-                batteryLevel: latestReading ? latestReading.batteryLevel : null,
-                signalStrength: latestReading ? latestReading.signalStrength : null,
-                timestamp: latestReading ? latestReading.timestamp : null,
-                isActive: sensor.isActive,
-                source: latestReading ? 'sensor' : 'no_data'
-            };
+                    routerData[router.routerId] = {
+                        routerId: router.routerId,
+                        routerName: router.routerName,
+                        routerType: router.routerType,
+                        address: router.address,
+                        sensors: router.sensors,
+                        data: latestData,
+                        isActive: router.isActive,
+                        lastSeen: router.lastSeen,
+                        batteryLevel: router.batteryLevel,
+                        signalStrength: router.signalStrength
+                    };
+                }
+            }
         }
 
         res.json({
             success: true,
+            hiveId: hiveId,
+            hiveName: hive.name,
             data: routerData
         });
 
     } catch (error) {
-        console.error('❌ User routers veri hatası:', error);
+        console.error('❌ Hive routers data error:', error);
         res.status(500).json({
             success: false,
-            message: 'Router verileri alınamadı'
+            message: 'Hive router verileri alınamadı',
+            error: error.message
+        });
+    }
+});
+
+// @route   GET /api/sensors/router/:routerId/latest
+// @desc    Belirli bir router için son veriyi getir
+// @access  Private
+router.get('/router/:routerId/latest', auth, async (req, res) => {
+    try {
+        const { routerId } = req.params;
+        console.log('📡 Router data request - Router:', routerId, 'User:', req.user.userId);
+
+        // Router'ın kullanıcıya ait olup olmadığını kontrol et
+        const Hive = require('../models/Hive');
+        const Apiary = require('../models/Apiary');
+
+        // Önce kullanıcının arılıklarını bul
+        const userApiaries = await Apiary.find({ ownerId: req.user.userId });
+        const apiaryIds = userApiaries.map(a => a._id);
+
+        // Bu arılıklardaki kovanları kontrol et
+        const userHive = await Hive.findOne({
+            apiary: { $in: apiaryIds },
+            $or: [
+                // Legacy sensor system
+                { 'sensor.routerId': routerId },
+                // New sensors system
+                { 'sensors.routerId': routerId },
+                // Hardware routers path (new structure)
+                { 'sensor.hardwareDetails.routers.routerId': routerId },
+                // Legacy hardware routers path (fallback)
+                { 'hardware.routers.routerId': routerId }
+            ]
+        });
+
+        if (!userHive) {
+            console.log(`❌ Router ${routerId} not found for user ${req.user.userId}`);
+            return res.status(403).json({
+                success: false,
+                message: 'Bu router\'a erişim yetkiniz yok'
+            });
+        }
+
+        console.log(`✅ Router ${routerId} access granted for user ${req.user.userId}`);
+
+        // Router verilerini al
+        const routerData = await getLatestRouterData(routerId, req.user.userId);
+
+        // Router bilgilerini bul (hem yeni hem eski structure'dan)
+        let router = userHive.sensor?.hardwareDetails?.routers?.find(r => r.routerId === routerId);
+        if (!router) {
+            router = userHive.hardware?.routers?.find(r => r.routerId === routerId);
+        }
+
+        res.json({
+            success: true,
+            routerId: routerId,
+            routerName: router?.routerName,
+            routerType: router?.routerType,
+            data: routerData,
+            source: routerData ? 'sensor' : 'no_data'
+        });
+
+    } catch (error) {
+        console.error('❌ Router data error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Router verisi alınamadı',
+            error: error.message
         });
     }
 });

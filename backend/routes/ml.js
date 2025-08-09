@@ -3,7 +3,7 @@ const router = express.Router();
 const MLProcessor = require('../services/mlProcessor');
 const SensorReading = require('../models/SensorReading');
 const Sensor = require('../models/Sensor');
-const auth = require('../middleware/auth');
+const { auth, requireBeekeeperOrAdmin } = require('../middleware/auth');
 
 // ML Processor instance
 const mlProcessor = new MLProcessor();

@@ -13,15 +13,21 @@ import re
 # Configuration
 BACKEND_URL = 'http://localhost:5000/api/lora/data'
 
-# Router data collection for complete device updates - Dinamik yapı
-router_data_cache = { 
-    '107': {'temperature': None, 'pressure': None, 'humidity': None, 'altitude': None, 'last_update': None},
-    '108': {'co': None, 'no': None, 'last_update': None},
-    '109': {'weight': None, 'temperature': None, 'humidity': None, 'last_update': None},
-    '110': {'vibration': None, 'sound': None, 'temperature': None, 'last_update': None},
-    '111': {'light': None, 'uv': None, 'temperature': None, 'last_update': None},
-    '112': {'ph': None, 'moisture': None, 'temperature': None, 'last_update': None}
-}
+# Router data collection - Dinamik yapı (artık manuel router'lar için)
+# Cache sistemi artık sadece gelen verileri geçici tutmak için kullanılacak
+router_data_cache = {}
+
+def add_router_to_cache(router_id, sensor_id=None):
+    """Yeni router'ı cache'e ekle"""
+    if router_id not in router_data_cache:
+        router_data_cache[router_id] = {
+            'sensor_id': sensor_id,
+            'data': {},
+            'last_update': None
+        }
+        print(f"📝 Router {router_id} cache'e eklendi (Sensor ID: {sensor_id})")
+
+# Bu fonksiyon silindi - send_to_backend içindeki update_router_cache kullanılacak
 
 def find_serial_port():
     """Mevcut COM portlarını tara ve LoRa modülünü bul"""
@@ -118,6 +124,9 @@ def send_to_backend(payload):
     value = payload['data_value']
     device_id = f"BT{router_id}"
     
+    # Router cache'ini güncelle
+    update_router_cache(payload)
+    
     # Backend API formatı - Router ve Sensor ID ayrı ayrı gönder
     api_data = {
         "deviceId": device_id,
@@ -129,61 +138,39 @@ def send_to_backend(payload):
         "sensorData": {}
     }
     
-    # Router 107 (BME280) - Çevre sensörleri
-    if router_id == "107":
-        if data_key == "WT":
-            api_data["sensorData"]["temperature"] = value
-        elif data_key == "PR":
-            api_data["sensorData"]["pressure"] = value
-        elif data_key == "AL":
-            api_data["sensorData"]["altitude"] = value
-        elif data_key == "WH":
-            api_data["sensorData"]["humidity"] = value
-            
-    # Router 108 (MICS-4514) - Gaz sensörleri
-    elif router_id == "108":
-        if data_key == "CO":
-            api_data["sensorData"]["co"] = value        # ✅ DÜZELTME: gasLevel → co
-        elif data_key == "NO":
-            api_data["sensorData"]["no2"] = value       # ✅ DÜZELTME: no2Level → no2
-    
-    # Router 109+ - Genişletilebilir yapı
-    elif router_id == "109":
-        if data_key == "WG":  # Weight
-            api_data["sensorData"]["weight"] = value
-        elif data_key == "WT":
-            api_data["sensorData"]["temperature"] = value
-        elif data_key == "WH":
-            api_data["sensorData"]["humidity"] = value
-    
-    elif router_id == "110":
-        if data_key == "VB":  # Vibration
-            api_data["sensorData"]["vibration"] = value
-        elif data_key == "SD":  # Sound
-            api_data["sensorData"]["sound"] = value
-        elif data_key == "WT":
-            api_data["sensorData"]["temperature"] = value
-    
-    else:
-        # Bilinmeyen router için genel mapping
-        data_mapping = {
-            "WT": "temperature",
-            "WH": "humidity", 
-            "PR": "pressure",
-            "AL": "altitude",
-            "CO": "gasLevel",
-            "NO": "no2Level",
-            "WG": "weight",
-            "VB": "vibration",
-            "SD": "sound",
-            "LT": "light",
-            "UV": "uv",
-            "PH": "ph",
-            "MS": "moisture"
-        }
+    # Dinamik veri mapping - Sensör tipine bakılmaksızın genel mapping
+    data_mapping = {
+        # Çevresel sensörler
+        "WT": "temperature",
+        "WH": "humidity", 
+        "PR": "pressure",
+        "AL": "altitude",
         
-        backend_key = data_mapping.get(data_key, data_key.lower())
-        api_data["sensorData"][backend_key] = value
+        # Gaz sensörleri
+        "CO": "co",
+        "NO": "no2",
+        "GS": "gas_level",
+        "LPG": "lpg_level",
+        
+        # Fiziksel sensörler
+        "WG": "weight",
+        "VB": "vibration",
+        "SD": "sound",
+        
+        # Işık sensörleri
+        "LT": "light",
+        "UV": "uv",
+        
+        # Toprak sensörleri
+        "PH": "ph",
+        "MS": "moisture"
+    }
+    
+    # Veri anahtarını backend parametresine çevir
+    backend_key = data_mapping.get(data_key, data_key.lower())
+    api_data["sensorData"][backend_key] = value
+    
+    print(f"📤 Backend'e gönderiliyor: {device_id} (R:{router_id}/S:{sensor_id}) - {data_key} → {backend_key} = {value}")
     
     # Backend'e gönder
     try:

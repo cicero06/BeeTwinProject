@@ -112,11 +112,10 @@ const userSchema = new mongoose.Schema({
         default: false
     },
 
-    // Roller ve İzinler
-    role: {
-        type: String,
-        enum: ['user', 'moderator', 'admin'],
-        default: 'user'
+    // Kullanıcı İzinleri ve Durum
+    isActive: {
+        type: Boolean,
+        default: true
     },
 
     // Tarihler

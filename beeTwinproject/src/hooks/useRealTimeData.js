@@ -11,6 +11,7 @@ import MLApiService from '../services/mlApi';
 export const useRealTimeData = () => {
     const { user, hives } = useAuth();
     const hookId = useRef(`hook_${Math.random().toString(36).substr(2, 9)}`).current;
+    const unregisterRef = useRef(null);
 
     const [sensorData, setSensorData] = useState([]);
     const [mlInsights, setMlInsights] = useState(null);
@@ -61,10 +62,13 @@ export const useRealTimeData = () => {
 
         try {
             // Register with WebSocket service
-            websocketService.registerHook(hookId, (data) => {
+            const unregister = websocketService.registerHook(hookId, (data) => {
                 console.log(`📡 Data received for hook ${hookId}:`, data);
                 setSensorData(prevData => [...prevData, data]);
             });
+            
+            // Store unregister function
+            unregisterRef.current = unregister;
 
             // Try to get ML insights (fallback data)
             try {
@@ -155,7 +159,9 @@ export const useRealTimeData = () => {
     useEffect(() => {
         return () => {
             console.log(`🧹 Cleaning up useRealTimeData hook ${hookId}`);
-            websocketService.unregisterHook(hookId);
+            if (unregisterRef.current) {
+                unregisterRef.current();
+            }
         };
     }, [hookId]);
 

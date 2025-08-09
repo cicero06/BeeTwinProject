@@ -238,6 +238,77 @@ class ApiService {
             };
         }
     }
+
+    // Router API calls
+    static async getSensorTypes() {
+        try {
+            const response = await this.get('/routers/sensor-types');
+            return response;
+        } catch (error) {
+            console.error('Sensor types error:', error);
+            throw error;
+        }
+    }
+
+    static async createRouter(routerData) {
+        try {
+            const response = await this.post('/routers/create', routerData);
+            return response;
+        } catch (error) {
+            console.error('Create router error:', error);
+            throw error;
+        }
+    }
+
+    static async getUserRouters() {
+        try {
+            const response = await this.get('/routers/user');
+            return response;
+        } catch (error) {
+            console.error('Get user routers error:', error);
+            throw error;
+        }
+    }
+
+    static async getRouter(routerId) {
+        try {
+            const response = await this.get(`/routers/${routerId}`);
+            return response;
+        } catch (error) {
+            console.error('Get router error:', error);
+            throw error;
+        }
+    }
+
+    static async updateRouter(routerId, updateData) {
+        try {
+            const response = await this.put(`/routers/${routerId}`, updateData);
+            return response;
+        } catch (error) {
+            console.error('Update router error:', error);
+            throw error;
+        }
+    }
+
+    static async deleteRouter(routerId) {
+        try {
+            const response = await this.delete(`/routers/${routerId}`);
+            return response;
+        } catch (error) {
+            console.error('Delete router error:', error);
+            throw error;
+        }
+    }
+
+    static async getSensorTypeKeys(sensorType) {
+        try {
+            const response = await this.get(`/routers/sensor-types/${sensorType}/keys`);
+            return response;
+        } catch (error) {
+            console.error('Get sensor type keys error:', error);
+            throw error;
+        }
+    }
 }
 
 export default ApiService;

@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const auth = require('../middleware/auth');
+const { auth, requireBeekeeperOrAdmin } = require('../middleware/auth');
 const SensorReading = require('../models/SensorReading');
 const Sensor = require('../models/Sensor');
 const mongoose = require('mongoose');

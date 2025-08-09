@@ -27,7 +27,7 @@ import { adjustColorOpacity, getCssVariable } from '../../utils/Utils';
 
 function DashboardCard01() {
   const { sensorData, connectionStatus, mlInsights, isLoading } = useRealTimeData();
-  const { user, apiaries, hives, getStats } = useAuth();
+  const { user, apiaries, hives, getStats, coordinatorStatus } = useAuth();
 
   // Get user-specific stats
   const userStats = getStats ? getStats() : { totalApiaries: 0, totalHives: 0, connectedHives: 0 };
@@ -43,42 +43,109 @@ function DashboardCard01() {
     lastUpdate: null
   });
 
-  // Update system data based on real-time sensor data and user data
+  // State for router status - BT107 ve BT108
+  const [routerStatus, setRouterStatus] = useState({
+    BT107: { status: 'disconnected', lastSeen: null, data: null },
+    BT108: { status: 'disconnected', lastSeen: null, data: null }
+  });
+
+  // Router verilerini çek - BT107 ve BT108
   useEffect(() => {
-    try {
-      console.log('🔄 DashboardCard01 - User Stats Updated:', user?.email, {
-        apiaries: apiaries?.length,
-        hives: hives?.length,
-        userStats
-      });
+    const fetchRouterData = async () => {
+      if (!user?.token) return;
 
-      // Use REAL user data - no fake data
-      const realTotalHives = userStats.totalHives || 0;
-      const realConnectedHives = userStats.connectedHives || 0;
-      const realOfflineHives = Math.max(0, realTotalHives - realConnectedHives);
+      const routers = ['107', '108'];
+      const newRouterStatus = { ...routerStatus };
 
-      // Calculate warning hives based on actual sensor data
-      let warningCount = 0;
-      if (hives && hives.length > 0) {
-        // Count hives with actual warning conditions from real data
-        warningCount = hives.filter(hive => {
-          // Check if hive has sensor data indicating warning
-          return hive.status === 'warning' || hive.temperature > 36 || hive.temperature < 30;
-        }).length;
+      for (const routerId of routers) {
+        try {
+          const response = await fetch(`/api/sensors/router/${routerId}/latest`, {
+            headers: {
+              'Authorization': `Bearer ${user.token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            const deviceId = `BT${routerId}`;
+            
+            newRouterStatus[deviceId] = {
+              status: result.data ? 'connected' : 'no_data',
+              lastSeen: result.data?.timestamp || null,
+              data: result.data,
+              type: result.routerType
+            };
+            
+            console.log(`✅ Router ${routerId} data fetched:`, result.data);
+          } else {
+            newRouterStatus[`BT${routerId}`] = {
+              status: 'error',
+              lastSeen: null,
+              data: null
+            };
+            console.log(`❌ Router ${routerId} fetch failed:`, response.status);
+          }
+        } catch (error) {
+          console.error(`❌ Router ${routerId} fetch error:`, error);
+          newRouterStatus[`BT${routerId}`] = {
+            status: 'error',
+            lastSeen: null,
+            data: null
+          };
+        }
       }
 
-      // Calculate real system health
-      const calculateSystemHealth = () => {
-        if (realTotalHives === 0) return 0; // No hives = no health score
+      setRouterStatus(newRouterStatus);
+    };
 
+    fetchRouterData();
+    const interval = setInterval(fetchRouterData, 30000); // 30 saniyede bir güncelle
+
+    return () => clearInterval(interval);
+  }, [user?.token]);
+
+  // Update system data based on real-time sensor data and coordinator data
+  useEffect(() => {
+    try {
+      console.log('🔄 DashboardCard01 - Data Updated:', user?.email, {
+        apiaries: apiaries?.length,
+        hives: hives?.length,
+        userStats,
+        coordinatorData: coordinatorStatus
+      });
+
+      // Use REAL coordinator data when available
+      const realTotalHives = coordinatorStatus?.totalHives || userStats.totalHives || 0;
+      const realConnectedHives = coordinatorStatus?.connectedHives || userStats.connectedHives || 0;
+      const realOfflineHives = coordinatorStatus?.disconnectedHives || Math.max(0, realTotalHives - realConnectedHives);
+
+      // Get warning hives from coordinator data
+      const warningCount = coordinatorStatus?.warningHives || 0;
+
+      // Use coordinator system health or calculate our own
+      const calculateSystemHealth = () => {
+        if (coordinatorStatus?.connectionRate !== undefined) {
+          // Use coordinator calculated connection rate
+          return coordinatorStatus.connectionRate;
+        }
+
+        // Fallback calculation
+        if (realTotalHives === 0) return 0;
         const connectedRatio = realConnectedHives / realTotalHives;
         const warningRatio = warningCount / realTotalHives;
-
-        // Real health calculation based on actual data
         const baseHealth = connectedRatio * 100;
         const warningPenalty = warningRatio * 20;
-
         return Math.max(0, Math.min(100, baseHealth - warningPenalty));
+      };
+
+      // Determine network status
+      const getNetworkStatus = () => {
+        if (connectionStatus) return "WebSocket Live";
+        if (coordinatorStatus?.lastActivity) return "Coordinator Connected";
+        if (realConnectedHives > 0) return "Database Connected";
+        if (realTotalHives > 0) return "Hives Offline";
+        return "No Hives";
       };
 
       setSystemData({
@@ -87,17 +154,16 @@ function DashboardCard01() {
         offlineHives: realOfflineHives,
         warningHives: warningCount,
         systemHealth: calculateSystemHealth(),
-        networkStatus: connectionStatus ? "WebSocket Live" :
-          realConnectedHives > 0 ? "Database Connected" :
-            realTotalHives > 0 ? "Hives Offline" : "No Hives",
-        lastUpdate: new Date().toISOString()
+        networkStatus: getNetworkStatus(),
+        lastUpdate: coordinatorStatus?.lastActivity || new Date().toISOString()
       });
 
-      // Update with user data
-      const newUserStats = getStats ? getStats() : { totalApiaries: 0, totalHives: 0, connectedHives: 0 };
-      console.log('📊 DashboardCard01 - Stats:', newUserStats);
-
-      // Calculate warning hives based on user's hives
+      console.log('📊 DashboardCard01 - Updated Stats:', {
+        totalHives: realTotalHives,
+        connectedHives: realConnectedHives,
+        systemHealth: calculateSystemHealth(),
+        coordinatorAvailable: !!coordinatorStatus
+      });
       let warningHives = 0;
       if (hives && Array.isArray(hives) && hives.length > 0) {
         warningHives = hives.filter(hive => {
@@ -120,7 +186,7 @@ function DashboardCard01() {
       if (sensorData && Array.isArray(sensorData) && sensorData.length > 0) {
         // Get unique device IDs from sensor data
         const uniqueDevices = [...new Set(sensorData.map(data => data.deviceId))];
-        const totalHives = Math.max(uniqueDevices.length, newUserStats.totalHives || 0);
+        const totalHives = Math.max(uniqueDevices.length, userStats.totalHives || 0);
 
         // Calculate active hives (devices with recent data - last 5 minutes)
         const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
@@ -303,6 +369,28 @@ function DashboardCard01() {
           <div className="flex justify-between items-center">
             <span className="text-sm text-gray-600 dark:text-gray-300">LoRa Ağ:</span>
             <span className="text-sm font-medium text-green-600">{systemData.networkStatus}</span>
+          </div>
+          
+          {/* Router Durumları - BT107 ve BT108 */}
+          <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+            <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Router Durumu:</div>
+            {Object.entries(routerStatus).map(([deviceId, status]) => (
+              <div key={deviceId} className="flex justify-between items-center mb-1">
+                <span className="text-xs text-gray-600 dark:text-gray-300">
+                  {deviceId} ({status.type || 'Unknown'}):
+                </span>
+                <div className="flex items-center space-x-1">
+                  <div className={`h-2 w-2 rounded-full ${
+                    status.status === 'connected' ? 'bg-green-500' : 
+                    status.status === 'no_data' ? 'bg-amber-500' : 'bg-red-500'
+                  }`}></div>
+                  <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                    {status.status === 'connected' ? 'Aktif' : 
+                     status.status === 'no_data' ? 'Veri Yok' : 'Hata'}
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>

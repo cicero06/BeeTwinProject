@@ -7,8 +7,13 @@
   - Router'lardan text format veri alır
   - Backend API'ye gönderir
   - Format: "RID:107; SID:1013; WT: 26.08"
-  - Router 107: BME280 (WT/PR/WH)
-  - Router 108: MICS-4514 (CO/NO)
+  - Desteklenen Sensörler:
+    * BMP280: Sıcaklık, Basınç, Nem, Yükseklik
+    * MICS-4514: CO, NO2 (hava kalitesi)
+    * Load Cell: Ağırlık ölçümü
+    * MQ2: Yanıcı gaz, CO, LPG
+    * DHT22: Sıcaklık, Nem
+  - Router ID ve Sensor ID kullanıcı tarafından manuel girilir
 
 ### Arduino
 - **`pc_coordinator_arduino_fixed.ino`** ⭐ **AKTİF**

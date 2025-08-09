@@ -3,76 +3,199 @@ import { useAuth } from '../../contexts/AuthContext';
 import useRealTimeData from '../../hooks/useRealTimeData';
 import LineChart from '../../charts/LineChart01';
 import { chartAreaGradient } from '../../charts/ChartjsConfig';
+import HardwareService from '../../services/hardwareService';
 
 // Import utilities
 import { adjustColorOpacity, getCssVariable } from '../../utils/Utils';
+import {
+  getDeviceSensorData,
+  getLatestDeviceData,
+  getDeviceConfig,
+  isDeviceOnline,
+  prepareDeviceChartData
+} from '../../utils/deviceDataUtils';
 
 /**
- * DashboardCard03 - Router 107 BMP280 Kovan Sıcaklık İzleme
+ * DashboardCard03 - Router 107 BMP280 Sıcaklık & Basınç İzleme
  * 
  * Bu bileşen, dijital ikiz temelli akıllı arı kovanı izleme sisteminin 
- * Router 107 BMP280 sensöründen gelen gerçek zamanlı sıcaklık verilerini
+ * Router 107 BMP280 sensöründen gelen gerçek zamanlı sıcaklık ve basınç verilerini
  * analiz eden katmanını oluşturmaktadır.
  * 
  * Özellikler:
- * - Router 107 BMP280 sensöründen gerçek zamanlı sıcaklık ölçümleri
- * - Optimal aralık karşılaştırması (33-36°C)
- * - 24 saatlik sıcaklık trendi
- * - Kritik sıcaklık uyarıları
- * - Nem ve basınç bilgileri
+ * - Router 107 BMP280 sensöründen gerçek zamanlı temperature ve pressure ölçümleri
+ * - Optimal sıcaklık aralığı karşılaştırması (33-36°C)
+ * - Basınç değeri görünümü (hPa)
+ * - 24 saatlik sıcaklık ve basınç trendi
+ * - Kritik değer uyarıları
  * 
  * Akademik Katkı: Dijital ikiz sisteminin gerçek IoT sensör veri analizi 
- * ve "izleme ve görselleştirme" işlevinin BMP280 sıcaklık parametresi bileşeni.
+ * ve "izleme ve görselleştirme" işlevinin BMP280 sıcaklık-basınç parametresi bileşeni.
  */
 
 function DashboardCard03() {
-  const { user, hives } = useAuth();
+  const { user, hives, coordinatorStatus } = useAuth();
   const { sensorData: realTimeSensorData, connectionStatus, isLoading: realTimeLoading } = useRealTimeData();
 
   const [sensorData, setSensorData] = useState({
     temperature: null,
-    humidity: null,
     pressure: null,
-    altitude: null,        // ✅ Altitude state eklendi
     lastUpdate: null,
     alertCount: 0,
     trendDirection: "stable",
     source: null
   });
+  const [routerConfigs, setRouterConfigs] = useState([]);
+  const [bmp280RouterId, setBmp280RouterId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0); // Manual refresh trigger
 
-  // Router 107 gerçek zamanlı veri işleme - Kullanıcıya özel filtre
+  // Debug: sensorData değişimlerini izle
   useEffect(() => {
-    if (realTimeSensorData && realTimeSensorData.length > 0 && user) {
-      // Kullanıcının kovanlarına ait Router 107 verilerini filtrele
-      const userHiveIds = hives?.map(hive => hive.id) || [];
+    console.log('🟢 sensorData updated:', sensorData);
+  }, [sensorData]);
 
-      // Router 107 verilerini filtrele ve kullanıcının kovanlarıyla eşleştir
-      const router107Data = realTimeSensorData.filter(data => {
-        const isRouter107 = data.routerId === "107" || data.deviceId === "107";
-        // Eğer hiveId belirtilmişse, kullanıcının kovanlarından olmalı
-        const isUserHive = !data.hiveId || userHiveIds.includes(data.hiveId) || userHiveIds.includes(data.hive_id);
-        return isRouter107 && isUserHive;
+  // 🎯 PERMANENT SOLUTION: Load router configurations from backend
+  useEffect(() => {
+    console.log('🔧 DashboardCard03 useEffect triggered');
+    console.log('User:', user);
+    console.log('Hives:', hives);
+
+    const loadRouterConfigurations = async () => {
+      if (!user || !hives || hives.length === 0) {
+        console.log('❌ Conditions not met: user=', !!user, 'hives=', !!hives, 'hivesLength=', hives?.length);
+        return;
+      }
+
+      try {
+        // Get first available hive for router configurations
+        const targetHive = hives[0];
+        console.log('🔍 Loading router configurations for hive:', targetHive.name, 'ID:', targetHive._id);
+
+        const result = await HardwareService.getRouterConfigurations(targetHive._id);
+        console.log('🔄 HardwareService result:', result);
+
+        if (result.success && result.data.routers) {
+          setRouterConfigs(result.data.routers);
+          console.log('✅ Router configurations loaded:', result.data.routers);
+
+          // Find BMP280 router
+          const bmp280Router = result.data.routers.find(router =>
+            router.routerType === 'bmp280' ||
+            router.dataKeys?.includes('temperature')
+          );
+
+          if (bmp280Router) {
+            setBmp280RouterId(bmp280Router.routerId);
+            console.log('🎯 BMP280 Router found:', bmp280Router.routerId);
+          } else {
+            console.log('⚠️ BMP280 Router bulunamadı');
+          }
+        } else {
+          console.log('⚠️ Router configurations not available:', result);
+        }
+      } catch (error) {
+        console.error('❌ Failed to load router configurations:', error);
+      }
+    };
+
+    loadRouterConfigurations();
+  }, [user, hives]);
+
+  // 🔧 YENİ: Dinamik Router Veri Alma
+  useEffect(() => {
+    const fetchRouterData = async () => {
+      if (!user || !hives || hives.length === 0 || !bmp280RouterId) return;
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        console.log(`� BMP280 Router ${bmp280RouterId} için veri alınıyor...`);
+
+        const token = localStorage.getItem('token');
+        const response = await fetch(`http://localhost:5000/api/sensors/router/${bmp280RouterId}/latest`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.data) {
+            const data = result.data;
+            console.log(`🌡️ Router ${bmp280RouterId} Raw Data:`, data);
+
+            setSensorData({
+              temperature: data.temperature || data.WT || null,
+              pressure: data.pressure || data.PR || null,
+              lastUpdate: data.timestamp,
+              alertCount: calculateAlertCount(data.temperature || data.WT),
+              trendDirection: "stable",
+              source: 'api_permanent'
+            });
+
+            // Debug log
+            console.log('🔍 DEBUG - Card03 Parsed data:', {
+              temperature: data.temperature || data.WT,
+              pressure: data.pressure || data.PR,
+              allFields: Object.keys(data)
+            });
+
+            setError(null);
+          } else {
+            console.log('⚠️ No data from router API:', result);
+            setError('Router verisi bulunamadı');
+          }
+        } else {
+          console.error('❌ API request failed:', response.status);
+          setError(`API isteği başarısız: ${response.status}`);
+        }
+      } catch (error) {
+        console.error('❌ Dynamic router data fetch error:', error);
+        setError('Veri alınırken hata oluştu');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    // İlk veri yükleme
+    fetchRouterData();
+
+    // Her 30 saniyede bir güncelle
+    const interval = setInterval(fetchRouterData, 30000);
+
+    return () => clearInterval(interval);
+  }, [user, hives, bmp280RouterId, refreshTrigger]);
+
+  // Gerçek zamanlı veri WebSocket'ten gelirse öncelik ver
+  useEffect(() => {
+    if (realTimeSensorData && realTimeSensorData.length > 0 && user && bmp280RouterId) {
+      // Dinamik router ID'ye göre filtrele
+      const routerData = realTimeSensorData.filter(data => {
+        return data.routerId === bmp280RouterId || data.deviceId === bmp280RouterId;
       });
 
-      if (router107Data.length > 0) {
-        const latestData = router107Data[router107Data.length - 1];
-        console.log('🌡️ Router 107 Real-time data:', latestData);
+      if (routerData.length > 0) {
+        const latestData = routerData[routerData.length - 1];
+        console.log(`🔄 Real-time update for Router ${bmp280RouterId}:`, latestData);
 
-        setSensorData({
-          temperature: latestData.parameters?.temperature || latestData.temperature || null,
-          humidity: latestData.parameters?.humidity || latestData.humidity || null,
-          pressure: latestData.parameters?.pressure || latestData.pressure || null,
+        setSensorData(prev => ({
+          ...prev,
+          temperature: latestData.temperature || latestData.parameters?.temperature || prev.temperature,
+          humidity: latestData.humidity || latestData.parameters?.humidity || prev.humidity,
+          pressure: latestData.pressure || latestData.parameters?.pressure || prev.pressure,
+          altitude: latestData.altitude || latestData.parameters?.altitude || prev.altitude,
           lastUpdate: latestData.timestamp || new Date().toISOString(),
-          alertCount: calculateAlertCount(latestData.parameters?.temperature || latestData.temperature),
-          trendDirection: "stable", // TODO: Implement trend calculation
-          source: 'realtime'
-        });
+          alertCount: calculateAlertCount(latestData.temperature || latestData.parameters?.temperature),
+          source: 'realtime_dynamic'
+        }));
         setError(null);
       }
     }
-  }, [realTimeSensorData, user, hives]);
+  }, [realTimeSensorData, user, hives, bmp280RouterId]);
 
   // Uyarı sayısını hesapla (optimal aralık dışı)
   const calculateAlertCount = (temperature) => {
@@ -80,98 +203,7 @@ function DashboardCard03() {
     return (temperature < 33 || temperature > 36) ? 1 : 0;
   };
 
-  // Kullanıcının BMP280 (Router tip 1) router'ını bul
-  const getBMP280RouterId = () => {
-    if (!hives || hives.length === 0) return null;
-
-    // İlk kovan, ilk router (BMP280)
-    const firstHive = hives[0];
-    if (firstHive?.hardware?.routers && firstHive.hardware.routers.length > 0) {
-      const bmp280Router = firstHive.hardware.routers.find(r => r.routerType === 'bmp280');
-      return bmp280Router?.routerId || null;
-    }
-
-    // Fallback: ESKİ sistem uyumluluğu
-    if (firstHive?.sensor?.routerId) {
-      return firstHive.sensor.routerId;
-    }
-
-    return null;
-  };
-
-  // Fallback API çağrısı (WebSocket bağlantısı yoksa)
-  const fetchBMP280Data = async () => {
-    if (connectionStatus) {
-      console.log('WebSocket aktif, API çağrısı atlanıyor');
-      return; // WebSocket varsa API çağrısı yapma
-    }
-
-    const routerId = getBMP280RouterId();
-    if (!routerId) {
-      setError('BMP280 router bulunamadı');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:5000/api/sensors/router/${routerId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.data) {
-          const data = result.data;
-          console.log(`📊 Router ${routerId} BMP280 Data (${data.source}):`, data);
-          setSensorData({
-            temperature: data.temperature || null,
-            humidity: data.humidity || null,
-            pressure: data.pressure || null,
-            altitude: data.altitude || null,      // ✅ Altitude eklendi
-            lastUpdate: data.timestamp || new Date().toISOString(),
-            alertCount: calculateAlertCount(data.temperature),
-            trendDirection: "stable",
-            source: data.source || 'unknown'
-          });
-        } else {
-          console.log('⚠️ API response başarısız:', result);
-          setError('Veri alınamadı');
-        }
-      } else {
-        throw new Error(`API Error: ${response.status}`);
-      }
-    } catch (err) {
-      console.error('❌ BMP280 sensör verisi alınamadı:', err);
-      setError(`Bağlantı hatası: ${err.message}`);
-      // Hata durumunda null değerler göster - gerçek durum
-      setSensorData({
-        temperature: null,
-        humidity: null,
-        pressure: null,
-        altitude: null,       // ✅ Altitude hata durumu
-        lastUpdate: null,
-        alertCount: 0,
-        trendDirection: "stable",
-        source: 'error'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // İlk yükleme ve otomatik güncelleme - 10 dakikalık veri periyoduna uygun
-  useEffect(() => {
-    fetchBMP280Data();
-
-    // Her 2 dakikada bir kontrol et (veri 10 dakikada bir geldiği için)
-    const interval = setInterval(fetchBMP280Data, 120000); // 2 dakika
-    return () => clearInterval(interval);
-  }, [hives]); // hives değişince yeniden çalış
+  // BMP280 kovanını bul (dinamik)
 
   // BMP280 kovanını bul (dinamik)
   const bmp280Hive = hives?.find(hive =>
@@ -243,7 +275,12 @@ function DashboardCard03() {
           </div>
         </div>
         <button
-          onClick={fetchBMP280Data}
+          onClick={() => {
+            // Manual refresh - force re-fetch data
+            console.log('🔄 Manual refresh triggered for BMP280 data');
+            setError(null);
+            setRefreshTrigger(prev => prev + 1); // Trigger useEffect
+          }}
           disabled={loading}
           className={`px-3 py-1 text-xs rounded-lg transition-colors ${loading
             ? 'bg-gray-100 text-gray-400 cursor-not-allowed'

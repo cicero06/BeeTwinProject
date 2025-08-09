@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import ApiService from '../services/api';
 import GoogleSignIn from '../components/GoogleSignIn';
 import HiveHardwareMappingForm from '../components/HiveHardwareMappingForm';
+import RouterSelector from '../components/RouterSelector';
 import LocationPicker from '../components/LocationPicker';
 
 function WelcomingPage() {

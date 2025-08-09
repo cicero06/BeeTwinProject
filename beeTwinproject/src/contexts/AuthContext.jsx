@@ -5,6 +5,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import ApiService from '../services/api';
+import CoordinatorService from '../services/coordinatorService';
 
 const AuthContext = createContext();
 
@@ -14,6 +15,7 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
     const [apiaries, setApiaries] = useState([]);
     const [hives, setHives] = useState([]);
+    const [coordinatorStatus, setCoordinatorStatus] = useState(null);
 
     // Check authentication status
     const checkAuthStatus = async () => {
@@ -95,8 +97,34 @@ export const AuthProvider = ({ children }) => {
             }
 
             console.log('✅ User profile loaded successfully');
+
+            // Load coordinator status
+            await loadCoordinatorStatus();
         } catch (error) {
             console.error('❌ Error loading profile:', error);
+        }
+    };
+
+    // Load coordinator status
+    const loadCoordinatorStatus = async () => {
+        try {
+            console.log('🔄 Loading coordinator status...');
+            const statusResult = await CoordinatorService.getDashboardSummary();
+
+            if (statusResult.success) {
+                setCoordinatorStatus(statusResult.summary);
+                console.log('📡 Coordinator status loaded:', {
+                    totalHives: statusResult.summary.totalHives,
+                    connectedHives: statusResult.summary.connectedHives,
+                    connectionRate: statusResult.summary.connectionRate
+                });
+            } else {
+                console.log('❌ Coordinator status loading failed:', statusResult.error);
+                setCoordinatorStatus(CoordinatorService.getEmptySummary());
+            }
+        } catch (error) {
+            console.error('❌ Error loading coordinator status:', error);
+            setCoordinatorStatus(CoordinatorService.getEmptySummary());
         }
     };
 
@@ -173,34 +201,55 @@ export const AuthProvider = ({ children }) => {
         console.log('👋 User logged out');
     };
 
-    // Get user statistics
+    // Get user statistics (enhanced with coordinator data)
     const getStats = () => {
         if (!user || !hives || !apiaries) {
             return {
                 totalApiaries: 0,
                 totalHives: 0,
                 connectedHives: 0,
-                offlineHives: 0
+                offlineHives: 0,
+                coordinatorData: coordinatorStatus || CoordinatorService.getEmptySummary()
             };
         }
 
+        // Base stats from hives data
         const totalHives = hives.length;
-        const connectedHives = hives.filter(hive => hive.sensor?.isConnected).length;
+
+        // Use coordinator data if available, otherwise fallback to sensor status
+        let connectedHives = 0;
+        if (coordinatorStatus && coordinatorStatus.connectedHives >= 0) {
+            connectedHives = coordinatorStatus.connectedHives;
+        } else {
+            connectedHives = hives.filter(hive => hive.sensor?.isConnected).length;
+        }
+
         const offlineHives = totalHives - connectedHives;
 
         return {
             totalApiaries: apiaries.length,
             totalHives,
             connectedHives,
-            offlineHives
+            offlineHives,
+            // Enhanced coordinator data
+            coordinatorData: coordinatorStatus || {
+                connectionRate: totalHives > 0 ? Math.round((connectedHives / totalHives) * 100) : 0,
+                healthyHives: connectedHives,
+                warningHives: 0,
+                lastActivity: null,
+                activeRouters: [],
+                totalSensors: 0,
+                activeSensors: 0,
+                hiveDetails: []
+            }
         };
     };
 
-    // Check if user is beekeeper
-    const isBeekeeper = user?.role === 'beekeeper' || user?.role === 'user' || (user && !user.role);
+    // Kullanıcı rol kontrolü - userType kullan
+    const isBeekeeper = user?.userType === 'beekeeper' || (user && !user.userType); // Default beekeeper
 
-    // Check if user is admin
-    const isAdmin = user?.role === 'admin';
+    // Admin kontrolü - userType kullan
+    const isAdmin = user?.userType === 'admin';
 
     // Check auth on mount
     useEffect(() => {
@@ -213,11 +262,13 @@ export const AuthProvider = ({ children }) => {
         loading,
         apiaries,
         hives,
+        coordinatorStatus,
         login,
         register,
         logout,
         checkAuthStatus,
         loadUserProfile,
+        loadCoordinatorStatus,
         getStats,
         isBeekeeper,
         isAdmin

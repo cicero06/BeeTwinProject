@@ -61,4 +61,26 @@ const auth = async (req, res, next) => {
     }
 };
 
-module.exports = auth;
+// Admin kontrolü middleware'i
+const requireAdmin = (req, res, next) => {
+    if (req.user?.userType !== 'admin') {
+        return res.status(403).json({
+            success: false,
+            message: 'Bu işlem için admin yetkisi gereklidir'
+        });
+    }
+    next();
+};
+
+// Beekeeper veya Admin kontrolü middleware'i
+const requireBeekeeperOrAdmin = (req, res, next) => {
+    if (!req.user?.userType || (req.user.userType !== 'beekeeper' && req.user.userType !== 'admin')) {
+        return res.status(403).json({
+            success: false,
+            message: 'Bu işlem için kullanıcı yetkisi gereklidir'
+        });
+    }
+    next();
+};
+
+module.exports = { auth, requireAdmin, requireBeekeeperOrAdmin };

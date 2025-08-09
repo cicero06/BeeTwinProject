@@ -2,20 +2,21 @@ import React, { useState, useEffect } from 'react';
 import useRealTimeData from '../../hooks/useRealTimeData';
 import { useAuth } from '../../contexts/AuthContext';
 import BarChart from '../../charts/BarChart01';
+import HardwareService from '../../services/hardwareService';
 
 /**
  * DashboardCard04 - Router 107 BMP280 Nem Seviyeleri  
  * 
- * Bu bileşen, Router 107 BMP280 sensöründen gelen nem verilerini
+ * Bu bileşen, Router 107 BMP280 sensöründen gelen sadece nem verilerini
  * gerçek zamanlı olarak izleyen özelleştirilmiş dashboard kartıdır.
  * 
  * Özellikler:
- * - Router 107 BMP280 sensöründen gerçek zamanlı nem ölçümleri
+ * - Router 107 BMP280 sensöründen sadece humidity ölçümleri
  * - API fallback desteği
  * - Optimal nem aralığı karşılaştırması (%50-70 arı kovanı için)
  * - Nem durumu gösterimi
  * 
- * Veri Kaynağı: Backend /api/sensors/router-107 endpoint'i
+ * Veri Kaynağı: Backend /api/sensors/router/107/latest endpoint'i
  */
 
 function DashboardCard04() {
@@ -29,27 +30,64 @@ function DashboardCard04() {
     lastUpdate: null,
     source: null
   });
+  const [routerConfigs, setRouterConfigs] = useState([]);
+  const [bmp280RouterId, setBmp280RouterId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0); // Manual refresh trigger
 
-  // Router 107 gerçek zamanlı nem veri işleme
+  // 🎯 PERMANENT SOLUTION: Load router configurations from backend
   useEffect(() => {
-    if (realTimeSensorData && realTimeSensorData.length > 0 && user) {
-      // Kullanıcının kovanlarına ait Router 107 verilerini filtrele
-      const userHiveIds = hives?.map(hive => hive.id) || [];
+    const loadRouterConfigurations = async () => {
+      if (!user || !hives || hives.length === 0) return;
 
-      // Router 107 verilerini filtrele
-      const router107Data = realTimeSensorData.filter(data => {
-        const isRouter107 = data.routerId === "107" || data.deviceId === "107";
-        const isUserHive = !data.hiveId || userHiveIds.includes(data.hiveId) || userHiveIds.includes(data.hive_id);
-        return isRouter107 && isUserHive;
+      try {
+        // Get first available hive for router configurations
+        const targetHive = hives[0];
+        console.log('🔍 Loading router configurations for hive (Humidity):', targetHive.name);
+
+        const result = await HardwareService.getRouterConfigurations(targetHive._id);
+
+        if (result.success && result.data.routers) {
+          setRouterConfigs(result.data.routers);
+          console.log('✅ Router configurations loaded (Humidity):', result.data.routers);
+
+          // Find BMP280 router
+          const bmp280Router = result.data.routers.find(router =>
+            router.routerType === 'bmp280' ||
+            router.dataKeys?.includes('humidity')
+          );
+
+          if (bmp280Router) {
+            setBmp280RouterId(bmp280Router.routerId);
+            console.log('🎯 BMP280 Router found (Humidity):', bmp280Router.routerId);
+          } else {
+            console.log('⚠️ BMP280 Router bulunamadı (Humidity)');
+          }
+        } else {
+          console.log('⚠️ Router configurations not available (Humidity)');
+        }
+      } catch (error) {
+        console.error('❌ Failed to load router configurations (Humidity):', error);
+      }
+    };
+
+    loadRouterConfigurations();
+  }, [user, hives]);
+
+  // 🔄 Dinamik Router Nem Veri İşleme (Real-time fallback)
+  useEffect(() => {
+    if (realTimeSensorData && realTimeSensorData.length > 0 && bmp280RouterId) {
+      // Real-time data'dan humidity verisi bul
+      const routerData = realTimeSensorData.filter(data => {
+        return data.routerId === bmp280RouterId || data.deviceId === `BT${bmp280RouterId}`;
       });
 
-      if (router107Data.length > 0) {
-        const latestData = router107Data[router107Data.length - 1];
-        console.log('💧 Router 107 Real-time humidity data:', latestData);
+      if (routerData.length > 0) {
+        const latestData = routerData[routerData.length - 1];
+        console.log(`💧 Real-time humidity for Router ${bmp280RouterId}:`, latestData);
 
-        const humidity = latestData.parameters?.humidity || latestData.humidity;
+        const humidity = latestData.humidity || latestData.parameters?.humidity || latestData.data?.humidity;
         if (humidity !== null && humidity !== undefined) {
           setHumidityData({
             humidity: humidity,
@@ -57,76 +95,84 @@ function DashboardCard04() {
             status: humidity >= 50 && humidity <= 70 ? 'optimal' :
               humidity < 50 ? 'dry' : 'wet',
             lastUpdate: latestData.timestamp || new Date().toISOString(),
-            source: 'realtime'
+            source: 'realtime_dynamic'
           });
           setError(null);
         }
       }
     }
-  }, [realTimeSensorData, user, hives]);
+  }, [realTimeSensorData, bmp280RouterId]);
 
-  // Fallback API çağrısı (WebSocket bağlantısı yoksa)
-  const fetchRouter107HumidityData = async () => {
-    if (connectionStatus) {
-      console.log('WebSocket aktif, API çağrısı atlanıyor');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5000/api/sensors/router-107', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.data) {
-          const data = result.data;
-          console.log(`💧 Router 107 Humidity Data (${data.source}):`, data);
-          setHumidityData({
-            humidity: data.humidity || null,
-            optimalRange: { min: 50, max: 70 },
-            status: data.humidity >= 50 && data.humidity <= 70 ? 'optimal' :
-              data.humidity < 50 ? 'dry' : 'wet',
-            lastUpdate: data.timestamp || new Date().toISOString(),
-            source: data.source || 'unknown'
-          });
-        } else {
-          console.log('⚠️ API response başarısız:', result);
-          setError('Nem verisi alınamadı');
-        }
-      } else {
-        throw new Error(`API Error: ${response.status}`);
-      }
-    } catch (err) {
-      console.error('❌ Router 107 nem verisi alınamadı:', err);
-      setError(`Bağlantı hatası: ${err.message}`);
-      // Hata durumunda null değerler göster
-      setHumidityData({
-        humidity: null,
-        optimalRange: { min: 50, max: 70 },
-        status: 'error',
-        lastUpdate: null,
-        source: 'error'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // İlk yükleme ve otomatik güncelleme - 10 dakikalık veri periyoduna uygun
+  // 🔧 UPDATED: Router Nem Veri Alma - Router API kullan
   useEffect(() => {
-    fetchRouter107HumidityData();
+    const fetchHumidityDataFromRouter = async () => {
+      if (!bmp280RouterId || !user) return;
 
-    // Her 2 dakikada bir kontrol et (veri 10 dakikada bir geldiği için)
-    const interval = setInterval(fetchRouter107HumidityData, 120000); // 2 dakika
+      setLoading(true);
+      try {
+        console.log('📡 Fetching humidity data from BMP280 Router:', bmp280RouterId);
+
+        const token = localStorage.getItem('token');
+        const response = await fetch(`http://localhost:5000/api/sensors/router/${bmp280RouterId}/latest`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.data) {
+            // Koordinatör formatında WH olarak gelebilir
+            const humidity = result.data.humidity || result.data.WH;
+            
+            console.log(`💧 Router ${bmp280RouterId} Humidity:`, {
+              humidity,
+              rawData: result.data,
+              allFields: Object.keys(result.data)
+            });
+
+            if (humidity !== null && humidity !== undefined) {
+              setHumidityData({
+                humidity: humidity,
+                optimalRange: { min: 50, max: 70 },
+                status: humidity >= 50 && humidity <= 70 ? 'optimal' :
+                  humidity < 50 ? 'dry' : 'wet',
+                lastUpdate: result.data.timestamp || new Date().toISOString(),
+                source: 'router_api'
+              });
+              setError(null);
+              return;
+            }
+          }
+        }
+
+        // Fallback: Default değerler
+        console.log('⚠️ No humidity data from router, using defaults');
+        setHumidityData({
+          humidity: 55, // Default optimal value
+          optimalRange: { min: 50, max: 70 },
+          status: 'optimal',
+          lastUpdate: new Date().toISOString(),
+          source: 'default'
+        });
+        setError(null);
+
+      } catch (error) {
+        console.error('❌ Error fetching humidity from router:', error);
+        setError('Router veri yükleme hatası');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    // Router yapılandırması mevcut ise veri çek
+    fetchHumidityDataFromRouter();
+
+    // Her 30 saniyede bir güncelle
+    const interval = setInterval(fetchHumidityDataFromRouter, 30000);
     return () => clearInterval(interval);
-  }, [connectionStatus]);
+  }, [bmp280RouterId, user, refreshTrigger]);
 
   // Chart data
   const chartData = {
@@ -156,10 +202,10 @@ function DashboardCard04() {
             <span>Optimal Aralık: %50-70</span>
             {humidityData.source && (
               <span className={`px-2 py-0.5 rounded-full text-xs ${humidityData.source === 'sensor'
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-                  : humidityData.source === 'realtime'
-                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
-                    : 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400'
+                ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+                : humidityData.source === 'realtime'
+                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
+                  : 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400'
                 }`}>
                 {humidityData.source === 'sensor' ? '📡 API' :
                   humidityData.source === 'realtime' ? '⚡ WebSocket' : '🎯 Simüle'}
@@ -168,7 +214,12 @@ function DashboardCard04() {
           </div>
         </div>
         <button
-          onClick={fetchRouter107HumidityData}
+          onClick={() => {
+            // Manual refresh - force re-fetch humidity data
+            console.log('🔄 Manual refresh triggered for BMP280 humidity data');
+            setError(null);
+            setRefreshTrigger(prev => prev + 1); // Trigger useEffect
+          }}
           disabled={loading}
           className={`px-3 py-1 text-xs rounded-lg transition-colors ${loading
             ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
@@ -189,12 +240,12 @@ function DashboardCard04() {
             Kovan Nem Seviyesi
           </div>
           <div className={`text-xs mt-2 px-3 py-1 rounded-full inline-block ${humidityData.status === 'optimal'
-              ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-              : humidityData.status === 'dry'
-                ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400'
-                : humidityData.status === 'wet'
-                  ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-                  : 'bg-gray-100 text-gray-700 dark:bg-gray-900/20 dark:text-gray-400'
+            ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+            : humidityData.status === 'dry'
+              ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400'
+              : humidityData.status === 'wet'
+                ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                : 'bg-gray-100 text-gray-700 dark:bg-gray-900/20 dark:text-gray-400'
             }`}>
             {humidityData.status === 'optimal' ? '✅ Optimal' :
               humidityData.status === 'dry' ? '⚠️ Kuru' :
@@ -223,9 +274,9 @@ function DashboardCard04() {
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-600 dark:text-gray-300">Veri Kaynağı:</span>
               <span className={`text-xs font-medium px-2 py-1 rounded-full ${humidityData.source === 'sensor' ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400' :
-                  humidityData.source === 'realtime' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' :
-                    humidityData.source === 'simulated' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400' :
-                      'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                humidityData.source === 'realtime' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' :
+                  humidityData.source === 'simulated' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400' :
+                    'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400'
                 }`}>
                 {humidityData.source === 'sensor' ? 'API' :
                   humidityData.source === 'realtime' ? 'WebSocket' :

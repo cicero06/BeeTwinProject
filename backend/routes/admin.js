@@ -1,25 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const auth = require('../middleware/auth');
+const { auth, requireAdmin } = require('../middleware/auth');
 const Hive = require('../models/Hive');
 const User = require('../models/User');
 const Apiary = require('../models/Apiary');
 
-// Admin middleware - sadece admin kullanıcılar erişebilir
-const adminAuth = (req, res, next) => {
-    if (req.user.userType !== 'admin') {
-        return res.status(403).json({
-            success: false,
-            message: 'Admin yetkisi gerekli'
-        });
-    }
-    next();
-};
-
 // @route   GET /api/admin/hives
 // @desc    Tüm kovanları listele (Admin)
 // @access  Admin Only
-router.get('/hives', auth, adminAuth, async (req, res) => {
+router.get('/hives', auth, requireAdmin, async (req, res) => {
     try {
         console.log('🔍 Admin Hives GET request');
 
@@ -49,7 +38,7 @@ router.get('/hives', auth, adminAuth, async (req, res) => {
 // @route   GET /api/admin/stats
 // @desc    Admin istatistikleri
 // @access  Admin Only
-router.get('/stats', auth, adminAuth, async (req, res) => {
+router.get('/stats', auth, requireAdmin, async (req, res) => {
     try {
         const [totalUsers, totalApiaries, totalHives, totalConnectedSensors] = await Promise.all([
             User.countDocuments({ userType: { $ne: 'admin' } }),
@@ -92,7 +81,7 @@ router.get('/stats', auth, adminAuth, async (req, res) => {
 // @route   GET /api/admin/users
 // @desc    Tüm kullanıcıları listele (Admin)
 // @access  Admin Only
-router.get('/users', auth, adminAuth, async (req, res) => {
+router.get('/users', auth, requireAdmin, async (req, res) => {
     try {
         const users = await User.find({ userType: { $ne: 'admin' } })
             .select('-password')
@@ -118,7 +107,7 @@ router.get('/users', auth, adminAuth, async (req, res) => {
 // @route   PUT /api/admin/users/:id/status
 // @desc    Kullanıcı durumunu güncelle (Admin)
 // @access  Admin Only
-router.put('/users/:id/status', auth, adminAuth, async (req, res) => {
+router.put('/users/:id/status', auth, requireAdmin, async (req, res) => {
     try {
         const { isActive } = req.body;
 
@@ -153,7 +142,7 @@ router.put('/users/:id/status', auth, adminAuth, async (req, res) => {
 // @route   DELETE /api/admin/hives/:id
 // @desc    Kovanı sil (Admin)
 // @access  Admin Only
-router.delete('/hives/:id', auth, adminAuth, async (req, res) => {
+router.delete('/hives/:id', auth, requireAdmin, async (req, res) => {
     try {
         const hive = await Hive.findByIdAndDelete(req.params.id);
 
@@ -181,7 +170,7 @@ router.delete('/hives/:id', auth, adminAuth, async (req, res) => {
 // @route   GET /api/admin/apiaries
 // @desc    Tüm arılıkları listele (Admin)
 // @access  Admin Only
-router.get('/apiaries', auth, adminAuth, async (req, res) => {
+router.get('/apiaries', auth, requireAdmin, async (req, res) => {
     try {
         const apiaries = await Apiary.find()
             .populate('ownerId', 'firstName lastName email userType')
@@ -224,4 +213,4 @@ router.get('/apiaries', auth, adminAuth, async (req, res) => {
     }
 });
 
-module.exports = router;
+module.exports = router; module.exports = router;

@@ -233,6 +233,19 @@ function Sidebar({
                             <li className="mb-1 last:mb-0">
                               <NavLink
                                 end
+                                to="/device-dashboard"
+                                className={({ isActive }) =>
+                                  "block transition duration-150 truncate " + (isActive ? "text-violet-500" : "text-gray-500/90 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200")
+                                }
+                              >
+                                <span className="text-sm font-medium lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">
+                                  🔧 Device Dashboard
+                                </span>
+                              </NavLink>
+                            </li>
+                            <li className="mb-1 last:mb-0">
+                              <NavLink
+                                end
                                 to="/sensor-analytics"
                                 className={({ isActive }) =>
                                   "block transition duration-150 truncate " + (isActive ? "text-violet-500" : "text-gray-500/90 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200")
@@ -463,13 +476,13 @@ function Sidebar({
               </h3>
               <ul className="mt-3">
                 {/* Admin Dashboard */}
-                <SidebarLinkGroup activecondition={pathname === "/admin" || pathname.includes("admin")}>
+                <SidebarLinkGroup activecondition={pathname === "/admin-panel" || pathname.includes("admin-panel")}>
                   {(handleClick, open) => {
                     return (
                       <React.Fragment>
                         <a
                           href="#0"
-                          className={`block text-gray-800 dark:text-gray-100 truncate transition duration-150 ${pathname === "/admin" || pathname.includes("admin") ? "" : "hover:text-gray-900 dark:hover:text-white"
+                          className={`block text-gray-800 dark:text-gray-100 truncate transition duration-150 ${pathname === "/admin-panel" || pathname.includes("admin-panel") ? "" : "hover:text-gray-900 dark:hover:text-white"
                             }`}
                           onClick={(e) => {
                             e.preventDefault();
@@ -479,7 +492,7 @@ function Sidebar({
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center">
-                              <svg className={`shrink-0 fill-current ${pathname === "/admin" || pathname.includes("admin") ? 'text-violet-500' : 'text-gray-400 dark:text-gray-500'}`} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+                              <svg className={`shrink-0 fill-current ${pathname === "/admin-panel" || pathname.includes("admin-panel") ? 'text-violet-500' : 'text-gray-400 dark:text-gray-500'}`} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
                                 <path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Z" />
                                 <path d="M6.879 9.879a3 3 0 1 1 2.242-2.242l-2.242 2.242Z" />
                               </svg>
@@ -500,7 +513,7 @@ function Sidebar({
                             <li className="mb-1 last:mb-0">
                               <NavLink
                                 end
-                                to="/admin"
+                                to="/admin-panel"
                                 className={({ isActive }) =>
                                   "block transition duration-150 truncate " + (isActive ? "text-violet-500" : "text-gray-500/90 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200")
                                 }

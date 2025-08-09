@@ -1,12 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const auth = require('../middleware/auth');
+const { auth, requireBeekeeperOrAdmin } = require('../middleware/auth');
 const Hive = require('../models/Hive');
 
 // @route   GET /api/hives
 // @desc    Kullanıcının kovanlarını getir
-// @access  Private
-router.get('/', auth, async (req, res) => {
+// @access  Private (Beekeeper or Admin)
+router.get('/', auth, requireBeekeeperOrAdmin, async (req, res) => {
     try {
         console.log('🏠 Hives GET request - User:', req.user.userId);
 

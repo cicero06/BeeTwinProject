@@ -147,6 +147,14 @@ class WebSocketService {
     }
 
     /**
+     * Unregister hook - for backward compatibility
+     */
+    unregisterHook(hookId) {
+        console.log(`🔓 Unregistering hook ${hookId} (legacy method)`);
+        // Note: This is a legacy method, registerHook should return cleanup function
+    }
+
+    /**
      * Remove event listener
      */
     removeEventListener(eventType, callback) {

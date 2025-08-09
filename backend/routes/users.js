@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const auth = require('../middleware/auth');
+const { auth, requireAdmin, requireBeekeeperOrAdmin } = require('../middleware/auth');
 const User = require('../models/User');
 const Hive = require('../models/Hive');
 const Apiary = require('../models/Apiary');

@@ -117,9 +117,8 @@ Bu proje MIT lisansı altında lisanslanmıştır.
 
 ## 🔗 Bağlantılar
 
-- [Proje Demosu](https://beetwin-demo.vercel.app)
-- [Dokümantasyon](https://docs.beetwin.com)
-- [API Referansı](https://api.beetwin.com/docs)
+- [Proje Demosu](https://beetwinproject.netlify.app/)
+
 
 ---
 

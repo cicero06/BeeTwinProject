@@ -97,9 +97,21 @@ const userSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    profilePicture: {
+        type: String,
+        default: ''
+    },
     phone: {
         type: String,
         trim: true
+    },
+    bio: {
+        type: String,
+        maxlength: [500, 'Biyografi en fazla 500 karakter olabilir'],
+        trim: true
+    },
+    dateOfBirth: {
+        type: Date
     },
 
     // Hesap Durumu

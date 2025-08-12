@@ -9,7 +9,6 @@ import Header from '../partials/Header';
 import Banner from '../partials/Banner';
 
 // 🔧 OPTİMİZASYON: Lazy loading for dashboard cards
-const DashboardCard01 = lazy(() => import('../partials/dashboard/DashboardCard01'));
 const DashboardCard02 = lazy(() => import('../partials/dashboard/DashboardCard02'));
 const DashboardCard03 = lazy(() => import('../partials/dashboard/DashboardCard03'));
 const DashboardCard04 = lazy(() => import('../partials/dashboard/DashboardCard04'));
@@ -18,11 +17,8 @@ const DashboardCard06 = lazy(() => import('../partials/dashboard/DashboardCard06
 const DashboardCard07 = lazy(() => import('../partials/dashboard/DashboardCard07'));
 const DashboardCard08 = lazy(() => import('../partials/dashboard/DashboardCard08'));
 const DashboardCard09 = lazy(() => import('../partials/dashboard/DashboardCard09'));
-const DashboardCard10 = lazy(() => import('../partials/dashboard/DashboardCard10'));
 const DashboardCard12 = lazy(() => import('../partials/dashboard/DashboardCard12'));
-const DashboardCard14 = lazy(() => import('../partials/dashboard/DashboardCard14'));
 const DashboardCard15 = lazy(() => import('../partials/dashboard/DashboardCard15'));
-const DashboardCard16 = lazy(() => import('../partials/dashboard/DashboardCard16'));
 function Dashboard() {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -111,61 +107,6 @@ function Dashboard() {
                   {isSystemAdmin && "Sistem Yönetimi & Analitik"}
                   {!user && "Arıcılık için Dijital İkiz Platformu"}
                 </p>
-                {isBeekeeper && (
-                  <div className="mt-2 flex gap-4 text-xs text-gray-600 dark:text-gray-400">
-                    <span>🏡 {stats.totalApiaries} Arılık</span>
-                    <span>🏠 {stats.totalHives} Kovan</span>
-                    <span>📡 {stats.connectedHives} Bağlı Sensör</span>
-                    {stats.totalApiaries === 0 && (
-                      <button
-                        onClick={() => {
-                          if (createDemoData) {
-                            createDemoData();
-                          } else {
-                            console.error('createDemoData fonksiyonu bulunamadı');
-                            alert('Demo veri oluşturma şu anda kullanılamıyor. Lütfen sayfayı yenileyin.');
-                          }
-                        }}
-                        className="ml-4 px-3 py-1 bg-blue-600 text-white text-xs rounded-md hover:bg-blue-700 transition-colors"
-                      >
-                        🎭 Demo Veri Oluştur
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Right: Actions */}
-              <div className="grid grid-flow-col sm:auto-cols-max justify-start sm:justify-end gap-2">
-                {/* Filter button */}
-                <div className="relative inline-flex">
-                  <button className="btn bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700/60 hover:border-gray-300 dark:hover:border-gray-600 text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300">
-                    <span className="sr-only">Filter</span>
-                    <svg className="fill-current" width="16" height="16" viewBox="0 0 16 16">
-                      <path d="M9 15H7a1 1 0 010-2h2a1 1 0 010 2zM11 11H5a1 1 0 010-2h6a1 1 0 010 2zM13 7H3a1 1 0 010-2h10a1 1 0 010 2zM15 3H1a1 1 0 010-2h14a1 1 0 010 2z" />
-                    </svg>
-                  </button>
-                </div>
-                {/* Datepicker built with flatpickr */}
-                <div className="relative">
-                  <input
-                    className="form-input pl-9 dark:bg-gray-800 text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300 font-medium"
-                    placeholder="Son 7 gün"
-                    readOnly
-                  />
-                  <div className="absolute inset-0 right-auto flex items-center pointer-events-none">
-                    <svg className="fill-current text-gray-500 dark:text-gray-400 ml-3 mr-2" width="16" height="16" viewBox="0 0 16 16">
-                      <path d="M15 2h-2V0h-2v2H9V0H7v2H5V0H3v2H1a1 1 0 00-1 1v12a1 1 0 001 1h14a1 1 0 001-1V3a1 1 0 00-1-1zM1 4h14v10H1V4z" />
-                    </svg>
-                  </div>
-                </div>
-                {/* Add view button */}
-                <button className="btn bg-gray-900 text-gray-100 hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-800 dark:hover:bg-white">
-                  <svg className="fill-current shrink-0 xs:hidden" width="16" height="16" viewBox="0 0 16 16">
-                    <path d="M15 7H9V1c0-.6-.4-1-1-1S7 .4 7 1v6H1c-.6 0-1 .4-1 1s.4 1 1 1h6v6c0 .6.4 1 1 1s1-.4 1-1V9h6c.6 0 1-.4 1-1s-.4-1-1-1z" />
-                  </svg>
-                  <span className="max-xs:sr-only">Add View</span>
-                </button>
               </div>
 
             </div>
@@ -254,7 +195,6 @@ function Dashboard() {
                       </div>
 
                       {/* Dashboard Kartları - Gerçek Veri Durumuna Göre */}
-                      <DashboardCard01 />
                       <DashboardCard02 />
                       <DashboardCard03 />
                       <DashboardCard04 />
@@ -263,11 +203,8 @@ function Dashboard() {
                       <DashboardCard07 />
                       <DashboardCard08 />
                       <DashboardCard09 />
-                      <DashboardCard10 />
                       <DashboardCard12 />
-                      <DashboardCard14 />
                       <DashboardCard15 />
-                      <DashboardCard16 />
                     </>
                   )}
 
@@ -295,7 +232,6 @@ function Dashboard() {
               {/* Admin Dashboard */}
               {isSystemAdmin && (
                 <>
-                  <DashboardCard01 />
                   <DashboardCard02 />
                   <DashboardCard03 />
                   <DashboardCard04 />
@@ -304,9 +240,7 @@ function Dashboard() {
                   <DashboardCard07 />
                   <DashboardCard08 />
                   <DashboardCard09 />
-                  <DashboardCard10 />
                   <DashboardCard12 />
-                  <DashboardCard14 />
                   <DashboardCard15 />
                 </>
               )}

@@ -56,9 +56,9 @@ async function addBT108RouterToUser() {
         console.log('✅ BT108 router kovan yapılandırmasına eklendi');
 
         // BT108 için sensör kaydı oluştur
-        const existingSensor = await Sensor.findOne({ 
+        const existingSensor = await Sensor.findOne({
             deviceId: 'BT108',
-            ownerId: user._id 
+            ownerId: user._id
         });
 
         if (!existingSensor) {
@@ -83,7 +83,7 @@ async function addBT108RouterToUser() {
         }
 
         console.log('🎉 BT108 router başarıyla eklendi!');
-        
+
     } catch (error) {
         console.error('❌ Hata:', error);
     } finally {

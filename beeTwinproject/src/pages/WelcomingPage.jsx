@@ -335,7 +335,10 @@ function WelcomingPage() {
                     name: apiary.name,
                     location: apiary.location,
                     hiveCount: apiary.hiveCount,
-                    hives: apiary.hives || []
+                    hives: apiary.hives || [],
+                    // 🗺️ Koordinat bilgilerini backend'in beklediği şekilde ekle
+                    latitude: apiary.latitude,
+                    longitude: apiary.longitude
                 }));
             }
 

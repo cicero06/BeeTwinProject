@@ -50,6 +50,7 @@ function DashboardCard03() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0); // Manual refresh trigger
+  const [historicalData, setHistoricalData] = useState([]); // Zamansal chart verisi için
 
   // Debug: sensorData değişimlerini izle
   useEffect(() => {
@@ -196,6 +197,47 @@ function DashboardCard03() {
       }
     }
   }, [realTimeSensorData, user, hives, bmp280RouterId]);
+
+  // 📈 ZAMANSAL VERİ ÇEKME - Router geçmiş verilerini al
+  useEffect(() => {
+    const fetchHistoricalData = async () => {
+      if (!user || !hives || hives.length === 0 || !bmp280RouterId) return;
+
+      try {
+        console.log(`📈 Router ${bmp280RouterId} için zamansal veriler alınıyor...`);
+
+        const token = localStorage.getItem('token');
+        const response = await fetch(`http://localhost:5000/api/sensors/router/${bmp280RouterId}/history?hours=6&limit=20`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.data.readings) {
+            console.log(`📊 Router ${bmp280RouterId} zamansal veri:`, result.data.readings.length, 'kayıt');
+            setHistoricalData(result.data.readings);
+          } else {
+            console.log('⚠️ Zamansal veri bulunamadı:', result);
+          }
+        } else {
+          console.error('❌ Zamansal veri API isteği başarısız:', response.status);
+        }
+      } catch (error) {
+        console.error('❌ Zamansal veri çekme hatası:', error);
+      }
+    };
+
+    // İlk veri yükleme
+    fetchHistoricalData();
+
+    // Her 2 dakikada bir güncelle
+    const interval = setInterval(fetchHistoricalData, 120000);
+
+    return () => clearInterval(interval);
+  }, [user, hives, bmp280RouterId]);
 
   // Uyarı sayısını hesapla (optimal aralık dışı)
   const calculateAlertCount = (temperature) => {

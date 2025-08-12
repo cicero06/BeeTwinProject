@@ -11,6 +11,7 @@ const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
+    const [userProfile, setUserProfile] = useState(null);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [loading, setLoading] = useState(true);
     const [apiaries, setApiaries] = useState([]);
@@ -62,38 +63,59 @@ export const AuthProvider = ({ children }) => {
         console.log('🔄 Loading user profile...');
 
         try {
-            // Load apiaries
-            const apiariesResponse = await ApiService.getUserApiaries();
-            console.log('📊 Apiaries API response:', apiariesResponse);
-            if (apiariesResponse.success) {
-                const userApiaries = apiariesResponse.data || [];
-                setApiaries(userApiaries);
-                console.log('🏡 Apiaries loaded:', userApiaries.length);
-            } else {
-                console.log('❌ Apiaries loading failed:', apiariesResponse.error);
-                setApiaries([]); // Empty array as fallback
-            }
+            // Load complete profile including apiaries
+            const profileResponse = await ApiService.getProfile();
+            console.log('📊 Profile API response:', profileResponse);
 
-            // Load hives
-            const hivesResponse = await ApiService.getUserHives();
-            if (hivesResponse.success) {
-                const userHives = hivesResponse.data || [];
-                setHives(userHives);
-                console.log('🐝 Hives loaded:', userHives.length);
+            if (profileResponse.success && profileResponse.data.data?.user) {
+                const userWithApiaries = profileResponse.data.data.user;
+
+                // UserProfile state'ini güncelle
+                setUserProfile(userWithApiaries);
+                console.log('👤 UserProfile state updated:', userWithApiaries.firstName, userWithApiaries.lastName);
+
+                const userApiaries = userWithApiaries.apiaries || [];
+                setApiaries(userApiaries);
+                console.log('🏡 Apiaries from profile loaded:', userApiaries.length);
+
+                // Koordinat bilgisi kontrolü ve log
+                userApiaries.forEach((apiary, index) => {
+                    const hasCoords = apiary.location?.coordinates?.latitude && apiary.location?.coordinates?.longitude;
+                    console.log(`🏡 Arılık ${index + 1}: ${apiary.name} - Koordinat: ${hasCoords ? '✅' : '❌'}`);
+                    if (hasCoords) {
+                        console.log(`   📍 Lat: ${apiary.location.coordinates.latitude}, Lng: ${apiary.location.coordinates.longitude}`);
+                    }
+                });
+
+                // Extract hives from apiaries
+                const allHives = [];
+                userApiaries.forEach(apiary => {
+                    if (apiary.hives && Array.isArray(apiary.hives)) {
+                        apiary.hives.forEach(hive => {
+                            // Add apiary reference to hive
+                            hive.apiary = apiary._id || apiary.id;
+                            allHives.push(hive);
+                        });
+                    }
+                });
+                setHives(allHives);
+                console.log('🐝 Hives from profile loaded:', allHives.length);
 
                 // Debug: Show sensor details for first few hives
-                if (userHives.length > 0) {
-                    userHives.slice(0, 3).forEach((hive, index) => {
+                if (allHives.length > 0) {
+                    allHives.slice(0, 3).forEach((hive, index) => {
                         console.log(`🐝 Hive ${index + 1}: ${hive.name}`, {
                             routerId: hive.sensor?.routerId,
                             sensorId: hive.sensor?.sensorId,
-                            hasSensor: !!hive.sensor
+                            hasSensor: !!hive.sensor,
+                            apiary: hive.apiary
                         });
                     });
                 }
             } else {
-                console.log('❌ Hives loading failed:', hivesResponse.error);
-                setHives([]); // Empty array as fallback
+                console.log('❌ Profile loading failed:', profileResponse.error);
+                setApiaries([]);
+                setHives([]);
             }
 
             console.log('✅ User profile loaded successfully');
@@ -251,6 +273,30 @@ export const AuthProvider = ({ children }) => {
     // Admin kontrolü - userType kullan
     const isAdmin = user?.userType === 'admin';
 
+    // Update user profile
+    const updateUserProfile = async (profileData) => {
+        try {
+            console.log('🔄 Updating user profile...', profileData);
+            const response = await ApiService.updateProfile(profileData);
+
+            if (response.data) {
+                console.log('✅ Profile updated successfully');
+
+                // Update current user state with new data
+                const updatedUser = response.data.user;
+                setUser(updatedUser);
+                setUserProfile(updatedUser);
+
+                // Update localStorage
+                localStorage.setItem('user', JSON.stringify(updatedUser));
+                return response.data;
+            }
+        } catch (error) {
+            console.error('❌ Profile update failed:', error);
+            throw error;
+        }
+    };
+
     // Check auth on mount
     useEffect(() => {
         checkAuthStatus();
@@ -258,6 +304,7 @@ export const AuthProvider = ({ children }) => {
 
     const value = {
         user,
+        userProfile,
         isAuthenticated,
         loading,
         apiaries,
@@ -268,6 +315,7 @@ export const AuthProvider = ({ children }) => {
         logout,
         checkAuthStatus,
         loadUserProfile,
+        updateUserProfile,
         loadCoordinatorStatus,
         getStats,
         isBeekeeper,

@@ -41,6 +41,13 @@ function DashboardCard02() {
     BT108: { status: 'loading', data: null, lastUpdate: null }
   });
 
+  // Geçmiş uyarı verilerini chart için state
+  const [alertHistory, setAlertHistory] = useState({
+    labels: [],
+    data: [],
+    lastFetched: null
+  });
+
   // Router verilerini çek
   useEffect(() => {
     const fetchRouterData = async () => {
@@ -61,12 +68,49 @@ function DashboardCard02() {
           if (response.ok) {
             const result = await response.json();
             const deviceId = `BT${routerId}`;
-            
+
+            // 🎯 GERÇEK ZAMANLI BAĞLANTI KONTROLÜ
+            let connectionStatus = 'disconnected';
+            let isRealTime = false;
+            let ageMinutes = null;
+
+            if (result.data?.timestamp) {
+              const dataTime = new Date(result.data.timestamp);
+              const now = new Date();
+              const timeDiff = now - dataTime;
+              ageMinutes = Math.round(timeDiff / 1000 / 60);
+              const fiveMinutes = 5 * 60 * 1000; // 5 dakika ms
+              const oneHour = 60 * 60 * 1000; // 1 saat ms
+
+              if (timeDiff <= fiveMinutes) {
+                connectionStatus = 'connected';
+                isRealTime = true;
+              } else if (timeDiff <= oneHour) {
+                connectionStatus = 'old_data';
+                isRealTime = false;
+              } else {
+                connectionStatus = 'very_old_data';
+                isRealTime = false;
+              }
+
+              console.log(`🚨 Card02 Router ${routerId} timestamp check:`, {
+                dataTime: dataTime.toISOString(),
+                now: now.toISOString(),
+                timeDiff: `${ageMinutes} dakika`,
+                status: connectionStatus,
+                isRealTime
+              });
+            } else {
+              connectionStatus = 'no_data';
+            }
+
             newRouterData[deviceId] = {
-              status: result.data ? 'active' : 'no_data',
+              status: connectionStatus,
               data: result.data,
               lastUpdate: new Date(),
-              routerType: result.routerType
+              routerType: result.routerType,
+              isRealTime: isRealTime,
+              ageMinutes: ageMinutes
             };
           } else {
             newRouterData[`BT${routerId}`] = {
@@ -94,9 +138,73 @@ function DashboardCard02() {
     return () => clearInterval(interval);
   }, [user?.token]);
 
+  // Geçmiş uyarı verilerini çek ve chart için hazırla
+  useEffect(() => {
+    const fetchAlertHistory = async () => {
+      if (!user?.token) return;
+
+      try {
+        console.log('📊 Card02 - Fetching alert history for chart...');
+
+        // Son 30 günlük uyarı geçmişini simüle et (gerçek API endpoint'i geliştirildiğinde burası güncellenecek)
+        const last30Days = [];
+        const alertCounts = [];
+        const currentDate = new Date();
+
+        for (let i = 29; i >= 0; i--) {
+          const date = new Date(currentDate);
+          date.setDate(date.getDate() - i);
+          const dateStr = date.toLocaleDateString('tr-TR', { month: '2-digit', day: '2-digit' });
+          last30Days.push(dateStr);
+
+          // Router verisi ve koordinatör durumuna göre dinamik uyarı sayısı hesapla
+          let dailyAlerts = 0;
+
+          if (coordinatorStatus?.connectionRate) {
+            if (coordinatorStatus.connectionRate < 50) {
+              dailyAlerts += Math.floor(Math.random() * 5) + 3; // 3-7 uyarı
+            } else if (coordinatorStatus.connectionRate < 80) {
+              dailyAlerts += Math.floor(Math.random() * 3) + 1; // 1-3 uyarı
+            } else {
+              dailyAlerts += Math.floor(Math.random() * 2); // 0-1 uyarı
+            }
+          } else {
+            // Fallback: rastgele değerler
+            dailyAlerts = Math.floor(Math.random() * 4);
+          }
+
+          alertCounts.push(dailyAlerts);
+        }
+
+        setAlertHistory({
+          labels: last30Days,
+          data: alertCounts,
+          lastFetched: new Date().toISOString()
+        });
+
+        console.log('📊 Card02 - Alert history updated:', {
+          dayCount: last30Days.length,
+          avgAlerts: (alertCounts.reduce((a, b) => a + b, 0) / alertCounts.length).toFixed(1)
+        });
+
+      } catch (error) {
+        console.error('❌ Card02 - Alert history fetch error:', error);
+      }
+    };
+
+    fetchAlertHistory();
+
+    // Her 5 dakikada bir güncelle
+    const interval = setInterval(fetchAlertHistory, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+
+  }, [user?.token, coordinatorStatus?.connectionRate]);
+
   // Generate dynamic alerts based on coordinator and hive data
   useEffect(() => {
-    if (coordinatorStatus && coordinatorStatus.hiveDetails.length > 0) {
+    console.log('🚨 Card02 - Alert generation triggered', { coordinatorStatus: !!coordinatorStatus, hiveCount: coordinatorStatus?.hiveDetails?.length });
+
+    if (coordinatorStatus && coordinatorStatus.hiveDetails && coordinatorStatus.hiveDetails.length > 0) {
       const alerts = [];
       let criticalCount = 0;
       let warningCount = 0;
@@ -123,7 +231,7 @@ function DashboardCard02() {
             id: alerts.length + 1,
             type: "warning",
             message: `${hiveDetail.name}: Sensör verisi gecikmiş`,
-            time: hiveDetail.lastSeen ? 
+            time: hiveDetail.lastSeen ?
               new Date(hiveDetail.lastSeen).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) :
               'Bilinmiyor',
             hiveId: hiveDetail.id,
@@ -138,7 +246,7 @@ function DashboardCard02() {
             id: alerts.length + 1,
             type: "info",
             message: `${hiveDetail.name}: Tüm sistemler normal (${hiveDetail.routerCount} router)`,
-            time: hiveDetail.lastSeen ? 
+            time: hiveDetail.lastSeen ?
               new Date(hiveDetail.lastSeen).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) :
               'Şimdi',
             hiveId: hiveDetail.id,
@@ -175,10 +283,18 @@ function DashboardCard02() {
         infoAlerts: infoCount,
         totalAlerts: alerts.length,
         recentAlerts: alerts.slice(0, 5), // Show only latest 5
-        networkStatus: criticalCount > 0 ? "Kritik" : 
-                      warningCount > 0 ? "Uyarı" : "Normal",
+        networkStatus: criticalCount > 0 ? "Kritik" :
+          warningCount > 0 ? "Uyarı" : "Normal",
         coordinatorConnectionRate: coordinatorStatus.connectionRate,
         lastCoordinatorActivity: coordinatorStatus.lastActivity
+      });
+
+      console.log('🚨 Card02 - Alert data set:', {
+        criticalCount,
+        warningCount,
+        infoCount,
+        totalAlerts: alerts.length,
+        networkStatus: criticalCount > 0 ? "Kritik" : warningCount > 0 ? "Uyarı" : "Normal"
       });
     } else if (hives && hives.length > 0) {
       // Fallback to legacy hive data when coordinator data unavailable
@@ -228,6 +344,68 @@ function DashboardCard02() {
     }
   }, [coordinatorStatus, hives]);
 
+  // Geçmiş uyarı verilerini çek ve chart için hazırla
+  useEffect(() => {
+    const fetchAlertHistory = async () => {
+      if (!user?.token) return;
+
+      try {
+        console.log('📊 Card02 - Fetching alert history for chart...');
+
+        // Son 30 günlük uyarı geçmişini simüle et (gerçek API endpoint'i geliştirildiğinde burası güncellenecek)
+        const last30Days = [];
+        const alertCounts = [];
+        const currentDate = new Date();
+
+        for (let i = 29; i >= 0; i--) {
+          const date = new Date(currentDate);
+          date.setDate(date.getDate() - i);
+          const dateStr = date.toLocaleDateString('tr-TR', { month: '2-digit', day: '2-digit' });
+          last30Days.push(dateStr);
+
+          // Router verisi ve koordinatör durumuna göre dinamik uyarı sayısı hesapla
+          let dailyAlerts = 0;
+
+          if (coordinatorStatus?.connectionRate) {
+            if (coordinatorStatus.connectionRate < 50) {
+              dailyAlerts += Math.floor(Math.random() * 5) + 3; // 3-7 uyarı
+            } else if (coordinatorStatus.connectionRate < 80) {
+              dailyAlerts += Math.floor(Math.random() * 3) + 1; // 1-3 uyarı
+            } else {
+              dailyAlerts += Math.floor(Math.random() * 2); // 0-1 uyarı
+            }
+          } else {
+            // Fallback: rastgele değerler
+            dailyAlerts = Math.floor(Math.random() * 4);
+          }
+
+          alertCounts.push(dailyAlerts);
+        }
+
+        setAlertHistory({
+          labels: last30Days,
+          data: alertCounts,
+          lastFetched: new Date().toISOString()
+        });
+
+        console.log('📊 Card02 - Alert history updated:', {
+          dayCount: last30Days.length,
+          avgAlerts: (alertCounts.reduce((a, b) => a + b, 0) / alertCounts.length).toFixed(1)
+        });
+
+      } catch (error) {
+        console.error('❌ Card02 - Alert history fetch error:', error);
+      }
+    };
+
+    fetchAlertHistory();
+
+    // Her 5 dakikada bir güncelle
+    const interval = setInterval(fetchAlertHistory, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+
+  }, [user?.token, coordinatorStatus?.connectionRate]);
+
   // Default alert data when no user data is available
   const defaultAlertData = {
     criticalAlerts: 3,
@@ -245,26 +423,40 @@ function DashboardCard02() {
   // Use user-specific data if available, otherwise use default
   const currentAlertData = user && hives && hives.length > 0 ? alertData : defaultAlertData;
 
+  // Chart data - tarihsel uyarı verilerini kullan
   const chartData = {
-    labels: [
-      '12-01-2022', '01-01-2023', '02-01-2023',
-      '03-01-2023', '04-01-2023', '05-01-2023',
-      '06-01-2023', '07-01-2023', '08-01-2023',
-      '09-01-2023', '10-01-2023', '11-01-2023',
-      '12-01-2023', '01-01-2024', '02-01-2024',
-      '03-01-2024', '04-01-2024', '05-01-2024',
-      '06-01-2024', '07-01-2024', '08-01-2024',
-      '09-01-2024', '10-01-2024', '11-01-2024',
-      '12-01-2024', '01-01-2025',
+    labels: alertHistory.labels.length > 0 ? alertHistory.labels : [
+      '12-01', '13-01', '14-01', '15-01', '16-01', '17-01', '18-01',
+      '19-01', '20-01', '21-01', '22-01', '23-01', '24-01', '25-01',
+      '26-01', '27-01', '28-01', '29-01', '30-01', '31-01', '01-02',
+      '02-02', '03-02', '04-02', '05-02', '06-02', '07-02', '08-02',
+      '09-02', '10-02', '11-02', '12-02'
     ],
     datasets: [
-      // Indigo line
+      // Kritik Uyarılar - Kırmızı çizgi
       {
-        data: [
-          622, 622, 426, 471, 365, 365, 238,
-          324, 288, 206, 324, 324, 500, 409,
-          409, 273, 232, 273, 500, 570, 767,
-          808, 685, 767, 685, 685,
+        label: 'Kritik Uyarılar',
+        data: alertHistory.data.length > 0 ?
+          alertHistory.data.map(count => Math.floor(count * 0.3)) : // Kritik uyarılar toplam uyarıların %30'u
+          [2, 1, 3, 1, 0, 1, 0, 2, 1, 0, 3, 2, 1, 0, 1, 2, 0, 1, 3, 2, 1, 0, 2, 1, 1, 0, 2, 1, 0, 1, 2, 1],
+        fill: false,
+        backgroundColor: getCssVariable('--color-red-500'),
+        borderColor: getCssVariable('--color-red-500'),
+        borderWidth: 3,
+        pointRadius: 2,
+        pointHoverRadius: 4,
+        pointBackgroundColor: getCssVariable('--color-red-500'),
+        pointHoverBackgroundColor: getCssVariable('--color-red-500'),
+        pointBorderWidth: 0,
+        pointHoverBorderWidth: 0,
+        clip: 20,
+        tension: 0.2,
+      },
+      // Toplam Uyarılar - Mor çizgi (gradient ile)
+      {
+        label: 'Toplam Uyarılar',
+        data: alertHistory.data.length > 0 ? alertHistory.data : [
+          6, 4, 8, 5, 2, 4, 1, 7, 5, 3, 9, 6, 4, 2, 5, 7, 3, 4, 8, 6, 5, 2, 6, 4, 4, 2, 6, 4, 2, 4, 6, 4
         ],
         fill: true,
         backgroundColor: function (context) {
@@ -286,20 +478,18 @@ function DashboardCard02() {
         clip: 20,
         tension: 0.2,
       },
-      // Gray line
+      // Uyarı Uyarıları - Turuncu çizgi  
       {
-        data: [
-          732, 610, 610, 504, 504, 504, 349,
-          349, 504, 342, 504, 610, 391, 192,
-          154, 273, 191, 191, 126, 263, 349,
-          252, 423, 622, 470, 532,
-        ],
-        borderColor: adjustColorOpacity(getCssVariable('--color-gray-500'), 0.25),
+        label: 'Uyarı Seviyesi',
+        data: alertHistory.data.length > 0 ?
+          alertHistory.data.map(count => Math.floor(count * 0.5)) : // Uyarı seviyesi toplam uyarıların %50'si
+          [3, 2, 4, 2, 1, 2, 1, 3, 2, 1, 4, 3, 2, 1, 2, 3, 1, 2, 4, 3, 2, 1, 3, 2, 2, 1, 3, 2, 1, 2, 3, 2],
+        borderColor: adjustColorOpacity(getCssVariable('--color-orange-500'), 0.8),
         borderWidth: 2,
         pointRadius: 0,
         pointHoverRadius: 3,
-        pointBackgroundColor: adjustColorOpacity(getCssVariable('--color-gray-500'), 0.25),
-        pointHoverBackgroundColor: adjustColorOpacity(getCssVariable('--color-gray-500'), 0.25),
+        pointBackgroundColor: adjustColorOpacity(getCssVariable('--color-orange-500'), 0.8),
+        pointHoverBackgroundColor: adjustColorOpacity(getCssVariable('--color-orange-500'), 0.8),
         pointBorderWidth: 0,
         pointHoverBorderWidth: 0,
         clip: 20,
@@ -406,17 +596,25 @@ function DashboardCard02() {
                     </span>
                   </div>
                   <div className="flex items-center space-x-1">
-                    <div className={`h-2 w-2 rounded-full ${
-                      router.status === 'active' ? 'bg-green-500' : 
-                      router.status === 'no_data' ? 'bg-amber-500' : 'bg-red-500'
-                    }`}></div>
-                    <span className="text-xs text-gray-600 dark:text-gray-300">
-                      {router.status === 'active' ? 'Aktif' : 
-                       router.status === 'no_data' ? 'Veri Yok' : 'Hata'}
+                    <div className={`h-2 w-2 rounded-full ${router.status === 'connected' ? 'bg-green-500 animate-pulse' :
+                        router.status === 'old_data' ? 'bg-yellow-500' :
+                          router.status === 'very_old_data' ? 'bg-orange-500' :
+                            router.status === 'no_data' ? 'bg-amber-500' :
+                              'bg-red-500'
+                      }`}></div>
+                    <span className={`text-xs font-medium ${router.status === 'connected' ? 'text-green-600 dark:text-green-400' :
+                        router.status === 'old_data' ? 'text-yellow-600 dark:text-yellow-400' :
+                          'text-red-600 dark:text-red-400'
+                      }`}>
+                      {router.status === 'connected' ? `Canlı (${router.ageMinutes || 0}dk)` :
+                        router.status === 'old_data' ? `Eski (${router.ageMinutes}dk)` :
+                          router.status === 'very_old_data' ? `Çok Eski (${router.ageMinutes}dk)` :
+                            router.status === 'no_data' ? 'Veri Yok' :
+                              'Hata'}
                     </span>
                   </div>
                 </div>
-                
+
                 {/* Veri detayları */}
                 {router.data && (
                   <div className="grid grid-cols-2 gap-2 text-xs">
@@ -430,7 +628,7 @@ function DashboardCard02() {
                     ))}
                   </div>
                 )}
-                
+
                 {router.lastUpdate && (
                   <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                     Son güncelleme: {router.lastUpdate.toLocaleTimeString('tr-TR')}

@@ -295,6 +295,9 @@ try {
     app.use('/api/ml', require('./routes/ml'));
     console.log('✅ ML route yüklendi');
 
+    app.use('/api/coordinator', require('./routes/coordinator'));
+    console.log('✅ Coordinator route yüklendi');
+
     // Health endpoint for PC coordinator
     app.get('/api/health', (req, res) => {
         res.json({

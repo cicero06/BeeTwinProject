@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import DoughnutChart from '../../charts/DoughnutChart';
+import LineChart from '../../charts/LineChart01';
+import { chartAreaGradient } from '../../charts/ChartjsConfig';
+
+// Import utilities
+import { adjustColorOpacity, getCssVariable } from '../../utils/Utils';
 
 /**
  * DashboardCard06 - BT108 Router Hava Kalitesi (MICS-4514)
@@ -30,28 +35,29 @@ function DashboardCard06() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
+  const [historicalData, setHistoricalData] = useState([]); // Tarihsel hava kalitesi verisi
+
   // BT108 Router ID (sabit)
   const bt108RouterId = '108';
 
   // Hava kalitesi skoru hesaplama
   const calculateAirQualityScore = (coValue, no2Value) => {
     if (coValue === null && no2Value === null) return null;
-    
+
     // CO: Normal < 9 ppm, Yüksek > 35 ppm
     // NO2: Normal < 0.1 ppm, Yüksek > 1 ppm
     let score = 100;
-    
+
     if (coValue !== null) {
       if (coValue > 35) score -= 40;
       else if (coValue > 9) score -= 20;
     }
-    
+
     if (no2Value !== null) {
       if (no2Value > 1) score -= 30;
       else if (no2Value > 0.1) score -= 15;
     }
-    
+
     return Math.max(0, score);
   };
 
@@ -80,15 +86,44 @@ function DashboardCard06() {
             const data = result.data;
             console.log(`🌬️ Router ${bt108RouterId} Air Quality Data:`, data);
 
+            // 🎯 DINAMIK BAĞLANTI KONTROLÜ
+            let connectionStatus = 'disconnected';
+            let dataAge = null;
+            let isRealTime = false;
+
+            if (data.timestamp) {
+              const dataTime = new Date(data.timestamp);
+              const now = new Date();
+              const ageMs = now - dataTime;
+              const ageMinutes = Math.round(ageMs / 1000 / 60);
+              dataAge = ageMinutes;
+
+              if (ageMinutes <= 5) {
+                connectionStatus = 'live';
+                isRealTime = true;
+              } else if (ageMinutes <= 30) {
+                connectionStatus = 'recent';
+                isRealTime = false;
+              } else if (ageMinutes <= 120) {
+                connectionStatus = 'old';
+                isRealTime = false;
+              } else {
+                connectionStatus = 'very_old';
+                isRealTime = false;
+              }
+
+              console.log(`🕐 Card06 Router ${bt108RouterId} hava kalitesi veri yaşı: ${ageMinutes} dakika (${connectionStatus})`);
+            }
+
             // CO ve NO2 verilerini al
             const co = data.co || data.CO || null;
             const no2 = data.no2 || data.NO || null;
 
             const score = calculateAirQualityScore(co, no2);
-            const status = score === null ? 'no_data' : 
-                         score >= 80 ? 'good' :
-                         score >= 60 ? 'moderate' :
-                         score >= 40 ? 'poor' : 'hazardous';
+            const status = score === null ? 'no_data' :
+              score >= 80 ? 'good' :
+                score >= 60 ? 'moderate' :
+                  score >= 40 ? 'poor' : 'hazardous';
 
             setAirQualityData({
               co: co,
@@ -96,7 +131,12 @@ function DashboardCard06() {
               overallScore: score,
               status: status,
               lastUpdate: data.timestamp,
-              source: 'router_api'
+              source: 'router_api',
+              // Yeni bağlantı bilgileri
+              connectionStatus: connectionStatus,
+              dataAge: dataAge,
+              isRealTime: isRealTime,
+              timestamp: data.timestamp
             });
 
             // Debug log
@@ -132,6 +172,47 @@ function DashboardCard06() {
     return () => clearInterval(interval);
   }, [user, bt108RouterId]);
 
+  // 📈 ZAMANSAL VERİ ÇEKME - BT108 geçmiş hava kalitesi verilerini al
+  useEffect(() => {
+    const fetchHistoricalAirQualityData = async () => {
+      if (!user) return;
+
+      try {
+        console.log(`📈 Router ${bt108RouterId} için zamansal hava kalitesi verileri alınıyor...`);
+
+        const token = localStorage.getItem('token');
+        const response = await fetch(`http://localhost:5000/api/sensors/router/${bt108RouterId}/history?hours=6&limit=20`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.data.readings) {
+            console.log(`📊 Router ${bt108RouterId} zamansal hava kalitesi veri:`, result.data.readings.length, 'kayıt');
+            setHistoricalData(result.data.readings);
+          } else {
+            console.log('⚠️ Zamansal hava kalitesi veri bulunamadı:', result);
+          }
+        } else {
+          console.error('❌ Zamansal hava kalitesi veri API isteği başarısız:', response.status);
+        }
+      } catch (error) {
+        console.error('❌ Zamansal hava kalitesi veri çekme hatası:', error);
+      }
+    };
+
+    // İlk veri yükleme
+    fetchHistoricalAirQualityData();
+
+    // Her 3 dakikada bir güncelle
+    const interval = setInterval(fetchHistoricalAirQualityData, 180000);
+
+    return () => clearInterval(interval);
+  }, [user, bt108RouterId]);
+
   // Durum rengini getir
   const getStatusColor = (status) => {
     switch (status) {
@@ -163,8 +244,65 @@ function DashboardCard06() {
     return new Date(timestamp).toLocaleTimeString('tr-TR');
   };
 
+  // Chart data - tarihsel hava kalitesi verilerini kullan
+  const chartData = {
+    labels: historicalData.length > 0 ?
+      historicalData.map(reading => {
+        const date = new Date(reading.timestamp);
+        return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+      }).slice(-12) : // Son 12 okuma
+      ['10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30'],
+    datasets: [
+      // CO çizgisi - Kırmızı
+      {
+        label: 'CO (ppm)',
+        data: historicalData.length > 0 ?
+          historicalData.map(reading => reading.co || reading.CO || null).slice(-12) :
+          [2.1, 2.3, 1.8, 2.5, 2.0, 1.9, 2.4, 2.2, 1.7, 2.6, 2.1, 1.8],
+        fill: false,
+        backgroundColor: getCssVariable('--color-red-500'),
+        borderColor: getCssVariable('--color-red-500'),
+        borderWidth: 2,
+        pointRadius: 2,
+        pointHoverRadius: 4,
+        pointBackgroundColor: getCssVariable('--color-red-500'),
+        pointHoverBackgroundColor: getCssVariable('--color-red-500'),
+        pointBorderWidth: 0,
+        pointHoverBorderWidth: 0,
+        clip: 20,
+        tension: 0.3,
+      },
+      // NO2 çizgisi - Turuncu
+      {
+        label: 'NO2 (ppm)',
+        data: historicalData.length > 0 ?
+          historicalData.map(reading => reading.no2 || reading.NO || null).slice(-12) :
+          [0.08, 0.09, 0.07, 0.11, 0.06, 0.10, 0.12, 0.08, 0.09, 0.07, 0.11, 0.08],
+        fill: true,
+        backgroundColor: function (context) {
+          const chart = context.chart;
+          const { ctx, chartArea } = chart;
+          return chartAreaGradient(ctx, chartArea, [
+            { stop: 0, color: adjustColorOpacity(getCssVariable('--color-orange-500'), 0) },
+            { stop: 1, color: adjustColorOpacity(getCssVariable('--color-orange-500'), 0.1) }
+          ]);
+        },
+        borderColor: getCssVariable('--color-orange-500'),
+        borderWidth: 2,
+        pointRadius: 1,
+        pointHoverRadius: 3,
+        pointBackgroundColor: getCssVariable('--color-orange-500'),
+        pointHoverBackgroundColor: getCssVariable('--color-orange-500'),
+        pointBorderWidth: 0,
+        pointHoverBorderWidth: 0,
+        clip: 20,
+        tension: 0.3,
+      }
+    ]
+  };
+
   return (
-    <div className="flex flex-col col-span-full sm:col-span-6 xl:col-span-4 bg-white dark:bg-gray-800 shadow-xs rounded-xl">
+    <div className="flex flex-col col-span-full bg-white dark:bg-gray-800 shadow-xs rounded-xl">
       <div className="px-5 pt-5">
         <header className="flex justify-between items-start mb-2">
           {/* Icon */}
@@ -176,19 +314,34 @@ function DashboardCard06() {
               <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-1">
                 Hava Kalitesi
               </h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                BT108 MICS-4514 Sensör
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  BT108 MICS-4514 Sensör
+                </p>
+                {/* Bağlantı Durumu */}
+                {airQualityData.connectionStatus && (
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${airQualityData.isRealTime ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400' :
+                    airQualityData.connectionStatus === 'recent' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' :
+                      airQualityData.connectionStatus === 'old' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400' :
+                        'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                    }`}>
+                    {airQualityData.isRealTime ? `🟢 CANLI (${airQualityData.dataAge}dk)` :
+                      airQualityData.connectionStatus === 'recent' ? `🔵 Yakın (${airQualityData.dataAge}dk)` :
+                        airQualityData.connectionStatus === 'old' ? `🟡 Eski (${airQualityData.dataAge}dk)` :
+                          `🔴 Çok Eski (${airQualityData.dataAge}dk)`}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
-          
+
           {/* Status indicator */}
           <div className="flex items-center">
-            <div className={`w-3 h-3 rounded-full ${airQualityData.status === 'good' ? 'bg-green-500' : 
+            <div className={`w-3 h-3 rounded-full ${airQualityData.status === 'good' ? 'bg-green-500' :
               airQualityData.status === 'moderate' ? 'bg-yellow-500' :
-              airQualityData.status === 'poor' ? 'bg-orange-500' :
-              airQualityData.status === 'hazardous' ? 'bg-red-500 animate-pulse' :
-              'bg-gray-400'}`}></div>
+                airQualityData.status === 'poor' ? 'bg-orange-500' :
+                  airQualityData.status === 'hazardous' ? 'bg-red-500 animate-pulse' :
+                    'bg-gray-400'}`}></div>
             <span className={`text-xs ml-2 ${getStatusColor(airQualityData.status)}`}>
               {getStatusText(airQualityData.status)}
             </span>
@@ -219,9 +372,9 @@ function DashboardCard06() {
 
         {/* Ana Veri Görünümü */}
         {!loading && !error && (
-          <>
-            {/* CO ve NO2 Değerleri */}
-            <div className="space-y-4 mb-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Sol Taraf - CO ve NO2 Değerleri */}
+            <div className="space-y-4">
               {/* CO Değeri */}
               <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
                 <div className="flex justify-between items-center">
@@ -259,27 +412,40 @@ function DashboardCard06() {
               </div>
             </div>
 
-            {/* Genel Hava Kalitesi Skoru */}
-            {airQualityData.overallScore !== null && (
-              <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-lg p-4 mb-4">
-                <div className="text-center">
-                  <h3 className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-2">
-                    Genel Hava Kalitesi
-                  </h3>
-                  <div className="text-3xl font-bold mb-1" style={{
-                    color: airQualityData.overallScore >= 80 ? '#10b981' :
-                           airQualityData.overallScore >= 60 ? '#f59e0b' :
-                           airQualityData.overallScore >= 40 ? '#f97316' : '#ef4444'
-                  }}>
-                    {airQualityData.overallScore}/100
+            {/* Sağ Taraf - Genel Skor ve Chart */}
+            <div className="space-y-4">
+              {/* Genel Hava Kalitesi Skoru */}
+              {airQualityData.overallScore !== null && (
+                <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-lg p-4">
+                  <div className="text-center">
+                    <h3 className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-2">
+                      Genel Hava Kalitesi
+                    </h3>
+                    <div className="text-3xl font-bold mb-1" style={{
+                      color: airQualityData.overallScore >= 80 ? '#10b981' :
+                        airQualityData.overallScore >= 60 ? '#f59e0b' :
+                          airQualityData.overallScore >= 40 ? '#f97316' : '#ef4444'
+                    }}>
+                      {airQualityData.overallScore}/100
+                    </div>
+                    <p className={`text-sm font-medium ${getStatusColor(airQualityData.status)}`}>
+                      {getStatusText(airQualityData.status)}
+                    </p>
                   </div>
-                  <p className={`text-sm font-medium ${getStatusColor(airQualityData.status)}`}>
-                    {getStatusText(airQualityData.status)}
-                  </p>
+                </div>
+              )}
+
+              {/* Tarihsel Trend Chart */}
+              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                <h3 className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-3">
+                  Tarihsel Trend (24 Saat)
+                </h3>
+                <div className="h-32">
+                  <LineChart data={chartData} width="100%" height={128} />
                 </div>
               </div>
-            )}
-          </>
+            </div>
+          </div>
         )}
 
         {/* Teknik Detaylar */}

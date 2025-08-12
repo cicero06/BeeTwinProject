@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import useRealTimeData from '../../hooks/useRealTimeData';
 import { useAuth } from '../../contexts/AuthContext';
-import BarChart from '../../charts/BarChart01';
+import LineChart from '../../charts/LineChart01';
+import { chartAreaGradient } from '../../charts/ChartjsConfig';
 import HardwareService from '../../services/hardwareService';
+
+// Import utilities
+import { adjustColorOpacity, getCssVariable } from '../../utils/Utils';
 
 /**
  * DashboardCard04 - Router 107 BMP280 Nem Seviyeleri  
@@ -35,6 +39,7 @@ function DashboardCard04() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0); // Manual refresh trigger
+  const [historicalData, setHistoricalData] = useState([]); // Zamansal chart verisi
 
   // 🎯 PERMANENT SOLUTION: Load router configurations from backend
   useEffect(() => {
@@ -125,7 +130,36 @@ function DashboardCard04() {
           if (result.success && result.data) {
             // Koordinatör formatında WH olarak gelebilir
             const humidity = result.data.humidity || result.data.WH;
-            
+
+            // 🎯 DINAMIK BAĞLANTI KONTROLÜ
+            let connectionStatus = 'disconnected';
+            let dataAge = null;
+            let isRealTime = false;
+
+            if (result.data.timestamp) {
+              const dataTime = new Date(result.data.timestamp);
+              const now = new Date();
+              const ageMs = now - dataTime;
+              const ageMinutes = Math.round(ageMs / 1000 / 60);
+              dataAge = ageMinutes;
+
+              if (ageMinutes <= 5) {
+                connectionStatus = 'live';
+                isRealTime = true;
+              } else if (ageMinutes <= 30) {
+                connectionStatus = 'recent';
+                isRealTime = false;
+              } else if (ageMinutes <= 120) {
+                connectionStatus = 'old';
+                isRealTime = false;
+              } else {
+                connectionStatus = 'very_old';
+                isRealTime = false;
+              }
+
+              console.log(`🕐 Card04 Router ${bmp280RouterId} nem veri yaşı: ${ageMinutes} dakika (${connectionStatus})`);
+            }
+
             console.log(`💧 Router ${bmp280RouterId} Humidity:`, {
               humidity,
               rawData: result.data,
@@ -139,7 +173,12 @@ function DashboardCard04() {
                 status: humidity >= 50 && humidity <= 70 ? 'optimal' :
                   humidity < 50 ? 'dry' : 'wet',
                 lastUpdate: result.data.timestamp || new Date().toISOString(),
-                source: 'router_api'
+                source: 'router_api',
+                // Yeni bağlantı bilgileri
+                connectionStatus: connectionStatus,
+                dataAge: dataAge,
+                isRealTime: isRealTime,
+                timestamp: result.data.timestamp
               });
               setError(null);
               return;
@@ -174,20 +213,98 @@ function DashboardCard04() {
     return () => clearInterval(interval);
   }, [bmp280RouterId, user, refreshTrigger]);
 
-  // Chart data
+  // 📈 ZAMANSAL VERİ ÇEKME - Router geçmiş nem verilerini al
+  useEffect(() => {
+    const fetchHistoricalHumidityData = async () => {
+      if (!user || !hives || hives.length === 0 || !bmp280RouterId) return;
+
+      try {
+        console.log(`📈 Router ${bmp280RouterId} için zamansal nem verileri alınıyor...`);
+
+        const token = localStorage.getItem('token');
+        const response = await fetch(`http://localhost:5000/api/sensors/router/${bmp280RouterId}/history?hours=6&limit=20`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.data.readings) {
+            console.log(`📊 Router ${bmp280RouterId} zamansal nem veri:`, result.data.readings.length, 'kayıt');
+            setHistoricalData(result.data.readings);
+          } else {
+            console.log('⚠️ Zamansal nem veri bulunamadı:', result);
+          }
+        } else {
+          console.error('❌ Zamansal nem veri API isteği başarısız:', response.status);
+        }
+      } catch (error) {
+        console.error('❌ Zamansal nem veri çekme hatası:', error);
+      }
+    };
+
+    // İlk veri yükleme
+    fetchHistoricalHumidityData();
+
+    // Her 2 dakikada bir güncelle
+    const interval = setInterval(fetchHistoricalHumidityData, 120000);
+
+    return () => clearInterval(interval);
+  }, [user, hives, bmp280RouterId]);
+
+  // Chart data - tarihsel nem verilerini kullan
   const chartData = {
-    labels: ['Mevcut Nem'],
+    labels: historicalData.length > 0 ?
+      historicalData.map(reading => {
+        const date = new Date(reading.timestamp);
+        return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+      }).slice(-12) : // Son 12 okuma
+      ['10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30'],
     datasets: [
+      // Nem çizgisi - Mavi
       {
-        label: 'Nem Seviyesi (%)',
-        data: [humidityData.humidity || 0],
-        backgroundColor: humidityData.status === 'optimal' ? '#10b981' :
-          humidityData.status === 'dry' ? '#f59e0b' : '#ef4444',
-        borderColor: humidityData.status === 'optimal' ? '#10b981' :
-          humidityData.status === 'dry' ? '#f59e0b' : '#ef4444',
+        label: 'Nem (% RH)',
+        data: historicalData.length > 0 ?
+          historicalData.map(reading => reading.humidity || reading.RH || null).slice(-12) :
+          [52, 58, 61, 59, 65, 68, 64, 70, 67, 63, 59, 56],
+        fill: true,
+        backgroundColor: function (context) {
+          const chart = context.chart;
+          const { ctx, chartArea } = chart;
+          return chartAreaGradient(ctx, chartArea, [
+            { stop: 0, color: adjustColorOpacity(getCssVariable('--color-blue-500'), 0) },
+            { stop: 1, color: adjustColorOpacity(getCssVariable('--color-blue-500'), 0.2) }
+          ]);
+        },
+        borderColor: getCssVariable('--color-blue-500'),
         borderWidth: 2,
+        pointRadius: 2,
+        pointHoverRadius: 4,
+        pointBackgroundColor: getCssVariable('--color-blue-500'),
+        pointHoverBackgroundColor: getCssVariable('--color-blue-500'),
+        pointBorderWidth: 0,
+        pointHoverBorderWidth: 0,
+        clip: 20,
+        tension: 0.3,
       },
-    ],
+      // Optimal aralık çizgisi - Yeşil
+      {
+        label: 'Optimal Aralık',
+        data: historicalData.length > 0 ?
+          new Array(Math.min(12, historicalData.length)).fill(60) : // Optimal orta değer %60
+          [60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60],
+        fill: false,
+        borderColor: adjustColorOpacity(getCssVariable('--color-green-500'), 0.5),
+        borderWidth: 1,
+        borderDash: [5, 5],
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        clip: 20,
+        tension: 0,
+      }
+    ]
   };
 
   return (
@@ -209,6 +326,19 @@ function DashboardCard04() {
                 }`}>
                 {humidityData.source === 'sensor' ? '📡 API' :
                   humidityData.source === 'realtime' ? '⚡ WebSocket' : '🎯 Simüle'}
+              </span>
+            )}
+            {/* Bağlantı Durumu */}
+            {humidityData.connectionStatus && (
+              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${humidityData.isRealTime ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400' :
+                humidityData.connectionStatus === 'recent' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' :
+                  humidityData.connectionStatus === 'old' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400' :
+                    'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                }`}>
+                {humidityData.isRealTime ? `🟢 CANLI (${humidityData.dataAge}dk)` :
+                  humidityData.connectionStatus === 'recent' ? `🔵 Yakın (${humidityData.dataAge}dk)` :
+                    humidityData.connectionStatus === 'old' ? `🟡 Eski (${humidityData.dataAge}dk)` :
+                      `🔴 Çok Eski (${humidityData.dataAge}dk)`}
               </span>
             )}
           </div>
@@ -297,9 +427,11 @@ function DashboardCard04() {
         )}
       </div>
 
-      {/* Humidity Bar Chart */}
+      {/* Humidity Trend Chart */}
       <div className="grow px-5 pb-5">
-        <BarChart data={chartData} width={389} height={96} />
+        <div className="h-24">
+          <LineChart data={chartData} width={389} height={96} />
+        </div>
       </div>
     </div>
   );

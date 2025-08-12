@@ -39,7 +39,7 @@ function DashboardCard05() {
         lastAttempt: now.toISOString(),
         nextRetry: nextRetry.toISOString(),
         connectionAttempts: prev.connectionAttempts + 1,
-        errorMessage: prev.connectionAttempts > 3 
+        errorMessage: prev.connectionAttempts > 3
           ? 'Load cell sensör bulunamadı. Donanım kontrolü gerekli.'
           : 'Load cell sensör bağlantısı deneniyor...'
       }));
@@ -61,7 +61,7 @@ function DashboardCard05() {
   };
 
   return (
-    <div className="flex flex-col col-span-full sm:col-span-6 xl:col-span-4 bg-white dark:bg-gray-800 shadow-xs rounded-xl">
+    <div className="flex flex-col col-span-full bg-white dark:bg-gray-800 shadow-xs rounded-xl">
       <div className="px-5 pt-5">
         <header className="flex justify-between items-start mb-2">
           {/* Icon */}
@@ -73,12 +73,22 @@ function DashboardCard05() {
               <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-1">
                 Load Cell Sensör
               </h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                HX711 Ağırlık Sensörü
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  HX711 Ağırlık Sensörü
+                </p>
+                {/* Beklenen Router Bilgisi */}
+                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400">
+                  🔄 BT{sensorStatus.expectedRouter} Bekleniyor
+                </span>
+                {/* Bağlantı Deneme Sayısı */}
+                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400">
+                  ❌ {sensorStatus.connectionAttempts} Deneme
+                </span>
+              </div>
             </div>
           </div>
-          
+
           {/* Status indicator */}
           <div className="flex items-center">
             <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
@@ -86,71 +96,78 @@ function DashboardCard05() {
           </div>
         </header>
 
-        {/* Bağlantı Durumu */}
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-4">
-          <div className="flex items-center mb-3">
-            <div className="text-red-600 dark:text-red-400 mr-2 text-xl">🔌</div>
-            <div>
-              <h3 className="text-red-800 dark:text-red-200 font-medium text-sm">
-                Sensör Bağlantısı Bulunamadı
-              </h3>
-              <p className="text-red-700 dark:text-red-300 text-xs">
-                {sensorStatus.errorMessage}
-              </p>
+        {/* Ana İçerik - Yan Yana Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Sol Taraf - Bağlantı Durumu */}
+          <div className="space-y-4">
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+              <div className="flex items-center mb-3">
+                <div className="text-red-600 dark:text-red-400 mr-2 text-xl">🔌</div>
+                <div>
+                  <h3 className="text-red-800 dark:text-red-200 font-medium text-sm">
+                    Sensör Bağlantısı Bulunamadı
+                  </h3>
+                  <p className="text-red-700 dark:text-red-300 text-xs">
+                    {sensorStatus.errorMessage}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-red-700 dark:text-red-300">Beklenen Router:</span>
+                  <span className="text-red-800 dark:text-red-200 font-mono">BT{sensorStatus.expectedRouter}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-red-700 dark:text-red-300">Sensör Tipi:</span>
+                  <span className="text-red-800 dark:text-red-200">{sensorStatus.sensorType}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-red-700 dark:text-red-300">Son Deneme:</span>
+                  <span className="text-red-800 dark:text-red-200">{formatTime(sensorStatus.lastAttempt)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-red-700 dark:text-red-300">Deneme Sayısı:</span>
+                  <span className="text-red-800 dark:text-red-200">{sensorStatus.connectionAttempts}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-red-700 dark:text-red-300">Sonraki Deneme:</span>
+                  <span className="text-red-800 dark:text-red-200">{formatTime(sensorStatus.nextRetry)}</span>
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="space-y-2 text-xs">
-            <div className="flex justify-between">
-              <span className="text-red-700 dark:text-red-300">Beklenen Router:</span>
-              <span className="text-red-800 dark:text-red-200 font-mono">BT{sensorStatus.expectedRouter}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-red-700 dark:text-red-300">Sensör Tipi:</span>
-              <span className="text-red-800 dark:text-red-200">{sensorStatus.sensorType}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-red-700 dark:text-red-300">Son Deneme:</span>
-              <span className="text-red-800 dark:text-red-200">{formatTime(sensorStatus.lastAttempt)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-red-700 dark:text-red-300">Deneme Sayısı:</span>
-              <span className="text-red-800 dark:text-red-200">{sensorStatus.connectionAttempts}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-red-700 dark:text-red-300">Sonraki Deneme:</span>
-              <span className="text-red-800 dark:text-red-200">{formatTime(sensorStatus.nextRetry)}</span>
-            </div>
-          </div>
-        </div>
+          {/* Sağ Taraf - Gelecek Özellikler */}
+          <div className="space-y-4">
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <div className="flex items-center mb-2">
+                <div className="text-blue-600 dark:text-blue-400 mr-2 text-lg">🔮</div>
+                <h3 className="text-blue-800 dark:text-blue-200 font-medium text-sm">
+                  Planlanan Özellikler
+                </h3>
+              </div>
 
-        {/* Gelecek Özellikler */}
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-          <div className="flex items-center mb-2">
-            <div className="text-blue-600 dark:text-blue-400 mr-2 text-lg">🔮</div>
-            <h3 className="text-blue-800 dark:text-blue-200 font-medium text-sm">
-              Planlanan Özellikler
-            </h3>
+              <ul className="space-y-1 text-xs text-blue-700 dark:text-blue-300">
+                <li className="flex items-center">
+                  <span className="w-1 h-1 bg-blue-600 rounded-full mr-2"></span>
+                  Gerçek zamanlı ağırlık ölçümü
+                </li>
+                <li className="flex items-center">
+                  <span className="w-1 h-1 bg-blue-600 rounded-full mr-2"></span>
+                  Bal üretimi trend analizi
+                </li>
+                <li className="flex items-center">
+                  <span className="w-1 h-1 bg-blue-600 rounded-full mr-2"></span>
+                  Günlük/haftalık ağırlık değişimi
+                </li>
+                <li className="flex items-center">
+                  <span className="w-1 h-1 bg-blue-600 rounded-full mr-2"></span>
+                  Alarm sistemi (hırsızlık/saldırı)
+                </li>
+              </ul>
+            </div>
           </div>
-          
-          <ul className="space-y-1 text-xs text-blue-700 dark:text-blue-300">
-            <li className="flex items-center">
-              <span className="w-1 h-1 bg-blue-600 rounded-full mr-2"></span>
-              Gerçek zamanlı ağırlık ölçümü
-            </li>
-            <li className="flex items-center">
-              <span className="w-1 h-1 bg-blue-600 rounded-full mr-2"></span>
-              Bal üretimi trend analizi
-            </li>
-            <li className="flex items-center">
-              <span className="w-1 h-1 bg-blue-600 rounded-full mr-2"></span>
-              Günlük/haftalık ağırlık değişimi
-            </li>
-            <li className="flex items-center">
-              <span className="w-1 h-1 bg-blue-600 rounded-full mr-2"></span>
-              Alarm sistemi (hırsızlık/saldırı)
-            </li>
-          </ul>
         </div>
 
         {/* Teknik Detaylar */}

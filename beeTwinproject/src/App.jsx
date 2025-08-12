@@ -10,12 +10,12 @@ import './charts/ChartjsConfig';
 
 // Import pages
 import Dashboard from './pages/Dashboard';
-import DeviceDashboard from './pages/DeviceDashboard';
 import WelcomingPage from './pages/WelcomingPage';
 import UserProfile from './pages/UserProfile';
 import AdminPanel from './pages/AdminPanel';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import HiveManagement from './pages/HiveManagement';
+import ApiaryList from './pages/ApiaryList';
 
 // Import auth components
 import { AuthProvider } from './contexts/AuthContext';
@@ -43,9 +43,19 @@ function App() {
             <Dashboard />
           </BeekeeperRoute>
         } />
-        <Route path="/device-dashboard" element={
+        <Route path="/apiaries" element={
           <BeekeeperRoute>
-            <DeviceDashboard />
+            <ApiaryList />
+          </BeekeeperRoute>
+        } />
+        <Route path="/hive-management" element={
+          <BeekeeperRoute>
+            <HiveManagement />
+          </BeekeeperRoute>
+        } />
+        <Route path="/hive-management/:apiaryId" element={
+          <BeekeeperRoute>
+            <HiveManagement />
           </BeekeeperRoute>
         } />
         <Route path="/profile" element={

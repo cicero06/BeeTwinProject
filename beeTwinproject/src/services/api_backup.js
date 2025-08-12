@@ -160,6 +160,48 @@ class ApiService {
             };
         }
     }
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    // User profile getir (alias for AuthContext compatibility)
+    static async getProfile() {
+        try {
+            const token = localStorage.getItem('token');
+
+            if (!token) {
+                throw new Error('Token bulunamadı');
+            }
+
+            const response = await fetch(`${API_BASE_URL}/users/profile`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                }
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || 'Profil getirilemedi');
+            }
+
+            return {
+                success: true,
+                data: data
+            };
+
+        } catch (error) {
+            console.error('Get profile error:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
 
     // Logout
     static logout() {
@@ -177,36 +219,6 @@ class ApiService {
     static getCurrentUser() {
         const userStr = localStorage.getItem('user');
         return userStr ? JSON.parse(userStr) : null;
-    }
-
-    // Generic PUT method
-    static async put(endpoint, data) {
-        try {
-            const token = localStorage.getItem('token');
-            if (!token) {
-                throw new Error('Token bulunamadı');
-            }
-
-            const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify(data)
-            });
-
-            const responseData = await response.json();
-
-            if (!response.ok) {
-                throw new Error(responseData.message || 'API çağrısı başarısız');
-            }
-
-            return responseData;
-        } catch (error) {
-            console.error('PUT request error:', error);
-            throw error;
-        }
     }
 
     // Admin için tüm arılıkları getir
@@ -372,49 +384,6 @@ class ApiService {
             return response;
         } catch (error) {
             console.error('Get sensor type keys error:', error);
-            throw error;
-        }
-    }
-
-    // Update user profile
-    static async updateProfile(profileData) {
-        try {
-            const response = await this.put('/users/profile', profileData);
-            return response;
-        } catch (error) {
-            console.error('Update profile error:', error);
-            throw error;
-        }
-    }
-
-    // Upload profile photo
-    static async uploadProfilePhoto(file) {
-        try {
-            const formData = new FormData();
-            formData.append('profilePhoto', file);
-
-            const token = localStorage.getItem('token');
-            if (!token) {
-                throw new Error('Token bulunamadı');
-            }
-
-            const response = await fetch(`${API_BASE_URL}/users/upload-photo`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                },
-                body: formData
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.message || 'Foto yükleme başarısız');
-            }
-
-            return data;
-        } catch (error) {
-            console.error('Upload photo error:', error);
             throw error;
         }
     }

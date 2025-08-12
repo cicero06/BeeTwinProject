@@ -9,7 +9,7 @@ async function getLatestRouterData(routerId, userId) {
     try {
         // Device ID formatına çevir (107 → BT107)
         const deviceId = `BT${routerId}`;
-        
+
         // Router'a ait sensörü deviceId ile bul
         const sensor = await Sensor.findOne({
             deviceId: deviceId,
@@ -235,6 +235,96 @@ router.get('/router/:routerId/latest', auth, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Router verisi alınamadı',
+            error: error.message
+        });
+    }
+});
+
+// @route   GET /api/sensors/router/:routerId/history
+// @desc    Belirli router için zamansal veri geçmişi getir
+// @access  Private
+router.get('/router/:routerId/history', auth, async (req, res) => {
+    try {
+        const { routerId } = req.params;
+        const { hours = 6, limit = 20 } = req.query;
+
+        console.log(`📈 Router ${routerId} historical data request - Hours: ${hours}, Limit: ${limit}`);
+
+        // Zaman aralığını hesapla
+        const endTime = new Date();
+        const startTime = new Date(endTime.getTime() - (hours * 60 * 60 * 1000));
+
+        // Router'ın kullanıcıya ait olup olmadığını kontrol et
+        const Hive = require('../models/Hive');
+        const Apiary = require('../models/Apiary');
+
+        const userApiaries = await Apiary.find({ ownerId: req.user.userId });
+        const apiaryIds = userApiaries.map(a => a._id);
+
+        const userHive = await Hive.findOne({
+            apiary: { $in: apiaryIds },
+            $or: [
+                { 'sensor.routerId': routerId },
+                { 'sensors.routerId': routerId },
+                { 'sensor.hardwareDetails.routers.routerId': routerId },
+                { 'hardware.routers.routerId': routerId }
+            ]
+        });
+
+        if (!userHive) {
+            return res.status(403).json({
+                success: false,
+                message: 'Bu router\'a erişim yetkiniz yok'
+            });
+        }
+
+        // Zamansal sensor verilerini al
+        const SensorReading = require('../models/SensorReading');
+
+        const historicalData = await SensorReading.find({
+            routerId: routerId,
+            timestamp: {
+                $gte: startTime,
+                $lte: endTime
+            }
+        })
+            .sort({ timestamp: 1 })
+            .limit(parseInt(limit))
+            .lean();
+
+        console.log(`📊 Found ${historicalData.length} historical records for router ${routerId}`);
+
+        // Veriyi frontend'e uygun formatta düzenle
+        const processedData = historicalData.map(reading => ({
+            timestamp: reading.timestamp,
+            temperature: reading.data?.WT || reading.data?.temperature || null,
+            pressure: reading.data?.PR || reading.data?.pressure || null,
+            humidity: reading.data?.WH || reading.data?.humidity || null,
+            co: reading.data?.CO || reading.data?.co || null,
+            no2: reading.data?.NO || reading.data?.no2 || null,
+            batteryLevel: reading.batteryLevel || null,
+            signalStrength: reading.signalStrength || null
+        }));
+
+        res.json({
+            success: true,
+            data: {
+                routerId: routerId,
+                timeRange: {
+                    start: startTime,
+                    end: endTime,
+                    hours: hours
+                },
+                readings: processedData,
+                count: processedData.length
+            }
+        });
+
+    } catch (error) {
+        console.error(`❌ Router ${req.params.routerId} historical data error:`, error);
+        res.status(500).json({
+            success: false,
+            message: 'Router geçmişi verileri alınamadı',
             error: error.message
         });
     }

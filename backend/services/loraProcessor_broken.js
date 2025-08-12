@@ -5,14 +5,7 @@ const { broadcastSensorData } = require('./websocket');
 const MLProcessor = require('./mlProcessor');
 
 // LoRa verisi işleme sınıfı
-class LoR            // Klasik anomali tespiti (backward compatibility)
-            if (lastReading) {
-                const basicAnomalies = this.detectAnomalies(lastReading.data, mappedSensorData);
-                if (basicAnomalies.length > 0) {
-                    readingData.metadata.basicAnomalies = basicAnomalies;
-                    console.log('⚠️ Basic anomalies detected:', basicAnomalies);
-                }
-            }cessor {
+class LoRaDataProcessor {
     constructor(io) {
         this.io = io; // WebSocket instance
         this.mlProcessor = new MLProcessor(); // 🧠 ML Processor entegrasyonu
@@ -246,406 +239,406 @@ class LoR            // Klasik anomali tespiti (backward compatibility)
                 return null;
             }
 
-                // Gerçek kovan bilgileri ile sensör oluştur
-                sensor = await Sensor.create({
-                    deviceId: wirelessData.deviceId,
-                    name: `${hive.name} - ${wirelessData.deviceId}`,
-                    ownerId: hive.apiary.ownerId, // 🎯 GERÇEK KULLANICI ID
-                    apiaryId: hive.apiary._id,    // 🎯 GERÇEK ARILIK ID
-                    sensorTypes: sensorTypes,
-                    status: 'active',
-                    batteryLevel: wirelessData.batteryLevel || 85
-                });
-                console.log('✅ New sensor created with real owner:', sensor.deviceId, 'Router:', routerId, 'Types:', sensorTypes);
-            }
+            // Gerçek kovan bilgileri ile sensör oluştur
+            sensor = await Sensor.create({
+                deviceId: wirelessData.deviceId,
+                name: `${hive.name} - ${wirelessData.deviceId}`,
+                ownerId: hive.apiary.ownerId, // 🎯 GERÇEK KULLANICI ID
+                apiaryId: hive.apiary._id,    // 🎯 GERÇEK ARILIK ID
+                sensorTypes: sensorTypes,
+                status: 'active',
+                batteryLevel: wirelessData.batteryLevel || 85
+            });
+            console.log('✅ New sensor created with real owner:', sensor.deviceId, 'Router:', routerId, 'Types:', sensorTypes);
+        }
 
             // Son veri ile karşılaştır (anomali tespiti için)
             const lastReading = await SensorReading.findOne({
-                sensorId: sensor._id
-            }).sort({ timestamp: -1 });
+            sensorId: sensor._id
+        }).sort({ timestamp: -1 });
 
-            // Field mapping - Koordinatör formatından database formatına çevir
-            const mappedSensorData = this.mapCoordinatorFields(wirelessData.sensorData);
-            console.log('🔄 Field mapping applied:', wirelessData.sensorData, '→', mappedSensorData);
+        // Field mapping - Koordinatör formatından database formatına çevir
+        const mappedSensorData = this.mapCoordinatorFields(wirelessData.sensorData);
+        console.log('🔄 Field mapping applied:', wirelessData.sensorData, '→', mappedSensorData);
 
-            // SensorReading oluştur (Battery ve Signal Strength eklendi)
-            const readingData = {
-                sensorId: sensor._id,
-                data: mappedSensorData,
-                timestamp: wirelessData.originalTimestamp || wirelessData.receivedAt,
-                batteryLevel: wirelessData.batteryLevel,   // 🔋 Coordinator'dan gelen
-                signalStrength: wirelessData.signalStrength, // 📶 Coordinator'dan gelen
-                metadata: {
-                    receivedAt: wirelessData.receivedAt,
-                    dataInterval: '10min',
-                    source: 'wireless'
-                }
-            };
-
-            // 🧠 ML Analysis - Gelişmiş analiz
-            const historicalData = await this.mlProcessor.getHistoricalData(wirelessData.deviceId, 30);
-            const mlResults = await this.mlProcessor.analyzeData({
-                deviceId: wirelessData.deviceId,
-                sensorData: mappedSensorData,
-                historicalData: historicalData
-            });
-
-            // ML sonuçlarını metadata'ya ekle
-            readingData.metadata.mlAnalysis = mlResults;
-
-            // Klasik anomali tespiti (backward compatibility)
-            if (lastReading) {
-                const basicAnomalies = this.detectAnomalies(lastReading.data, wirelessData.sensorData);
-                if (basicAnomalies.length > 0) {
-                    readingData.metadata.basicAnomalies = basicAnomalies;
-                    console.log('⚠️ Basic anomalies detected:', basicAnomalies);
-                }
+        // SensorReading oluştur (Battery ve Signal Strength eklendi)
+        const readingData = {
+            sensorId: sensor._id,
+            data: mappedSensorData,
+            timestamp: wirelessData.originalTimestamp || wirelessData.receivedAt,
+            batteryLevel: wirelessData.batteryLevel,   // 🔋 Coordinator'dan gelen
+            signalStrength: wirelessData.signalStrength, // 📶 Coordinator'dan gelen
+            metadata: {
+                receivedAt: wirelessData.receivedAt,
+                dataInterval: '10min',
+                source: 'wireless'
             }
-
-            // Database'e kaydet
-            const savedReading = await SensorReading.create(readingData);
-            console.log('💾 Wireless sensor reading saved:', savedReading._id);
-
-            // Sensör bilgilerini güncelle
-            await Sensor.findByIdAndUpdate(sensor._id, {
-                batteryLevel: wirelessData.batteryLevel,
-                lastSeen: wirelessData.receivedAt,
-                status: wirelessData.batteryLevel > 20 ? 'active' : 'low_battery'
-            });
-
-            // Alert kontrolü (ML sonuçları dahil)
-            await this.checkForAlerts(sensor, savedReading, mlResults);
-
-            // WebSocket ile frontend'e gönder (ML insights dahil)
-            broadcastSensorData(this.io, {
-                ...savedReading.toObject(),
-                ownerId: sensor.ownerId,
-                sensorName: sensor.name,
-                deviceId: sensor.deviceId,
-                mlInsights: mlResults // 🧠 ML sonuçları frontend'e
-            });
-
-            return savedReading;
-
-        } catch (error) {
-            console.error('❌ Wireless data processing error:', error.message);
-            console.error('📋 Error stack:', error.stack);
-            console.error('🔍 Error details:', {
-                name: error.name,
-                message: error.message,
-                deviceId: wirelessData?.deviceId,
-                routerId: wirelessData?.deviceId?.replace('BT', '')
-            });
-            return null;
-        }
-    }
-
-    // Koordinatör field mapping - WT, PR, WH formatından backend formatına çevir
-    mapCoordinatorFields(sensorData) {
-        const fieldMapping = {
-            // Çevresel sensörler
-            "WT": "temperature",
-            "WH": "humidity", 
-            "PR": "pressure",
-            "AL": "altitude",
-            
-            // Gaz sensörleri
-            "CO": "co",
-            "NO": "no2",
-            "GS": "gas_level",
-            "LPG": "lpg_level",
-            
-            // Fiziksel sensörler
-            "WG": "weight",
-            "VB": "vibration",
-            "SD": "sound",
-            
-            // Işık sensörleri
-            "LT": "light",
-            "UV": "uv",
-            
-            // Toprak sensörleri
-            "PH": "ph",
-            "MS": "moisture"
         };
 
-        const mappedData = {};
-        
-        // Her field için mapping uygula
-        for (const [key, value] of Object.entries(sensorData)) {
-            const mappedKey = fieldMapping[key] || key.toLowerCase();
-            mappedData[mappedKey] = value;
-        }
-        
-        return mappedData;
-    }
+        // 🧠 ML Analysis - Gelişmiş analiz
+        const historicalData = await this.mlProcessor.getHistoricalData(wirelessData.deviceId, 30);
+        const mlResults = await this.mlProcessor.analyzeData({
+            deviceId: wirelessData.deviceId,
+            sensorData: mappedSensorData,
+            historicalData: historicalData
+        });
 
-    // Anomali tespiti
-    detectAnomalies(lastData, currentData) {
-        const anomalies = [];
-        const thresholds = {
-            temperature: 10, // 10°C ani değişim
-            humidity: 30,    // 30% ani değişim
-            weight: 5        // 5kg ani değişim
-        };
+        // ML sonuçlarını metadata'ya ekle
+        readingData.metadata.mlAnalysis = mlResults;
 
-        for (const [key, threshold] of Object.entries(thresholds)) {
-            if (lastData[key] && currentData[key]) {
-                const change = Math.abs(currentData[key] - lastData[key]);
-                if (change > threshold) {
-                    anomalies.push({
-                        parameter: key,
-                        change: change,
-                        threshold: threshold,
-                        lastValue: lastData[key],
-                        currentValue: currentData[key]
-                    });
-                }
+        // Klasik anomali tespiti (backward compatibility)
+        if (lastReading) {
+            const basicAnomalies = this.detectAnomalies(lastReading.data, wirelessData.sensorData);
+            if (basicAnomalies.length > 0) {
+                readingData.metadata.basicAnomalies = basicAnomalies;
+                console.log('⚠️ Basic anomalies detected:', basicAnomalies);
             }
         }
 
-        return anomalies;
+        // Database'e kaydet
+        const savedReading = await SensorReading.create(readingData);
+        console.log('💾 Wireless sensor reading saved:', savedReading._id);
+
+        // Sensör bilgilerini güncelle
+        await Sensor.findByIdAndUpdate(sensor._id, {
+            batteryLevel: wirelessData.batteryLevel,
+            lastSeen: wirelessData.receivedAt,
+            status: wirelessData.batteryLevel > 20 ? 'active' : 'low_battery'
+        });
+
+        // Alert kontrolü (ML sonuçları dahil)
+        await this.checkForAlerts(sensor, savedReading, mlResults);
+
+        // WebSocket ile frontend'e gönder (ML insights dahil)
+        broadcastSensorData(this.io, {
+            ...savedReading.toObject(),
+            ownerId: sensor.ownerId,
+            sensorName: sensor.name,
+            deviceId: sensor.deviceId,
+            mlInsights: mlResults // 🧠 ML sonuçları frontend'e
+        });
+
+        return savedReading;
+
+    } catch(error) {
+        console.error('❌ Wireless data processing error:', error.message);
+        console.error('📋 Error stack:', error.stack);
+        console.error('🔍 Error details:', {
+            name: error.name,
+            message: error.message,
+            deviceId: wirelessData?.deviceId,
+            routerId: wirelessData?.deviceId?.replace('BT', '')
+        });
+        return null;
     }
+}
+
+// Koordinatör field mapping - WT, PR, WH formatından backend formatına çevir
+mapCoordinatorFields(sensorData) {
+    const fieldMapping = {
+        // Çevresel sensörler
+        "WT": "temperature",
+        "WH": "humidity",
+        "PR": "pressure",
+        "AL": "altitude",
+
+        // Gaz sensörleri
+        "CO": "co",
+        "NO": "no2",
+        "GS": "gas_level",
+        "LPG": "lpg_level",
+
+        // Fiziksel sensörler
+        "WG": "weight",
+        "VB": "vibration",
+        "SD": "sound",
+
+        // Işık sensörleri
+        "LT": "light",
+        "UV": "uv",
+
+        // Toprak sensörleri
+        "PH": "ph",
+        "MS": "moisture"
+    };
+
+    const mappedData = {};
+
+    // Her field için mapping uygula
+    for (const [key, value] of Object.entries(sensorData)) {
+        const mappedKey = fieldMapping[key] || key.toLowerCase();
+        mappedData[mappedKey] = value;
+    }
+
+    return mappedData;
+}
+
+// Anomali tespiti
+detectAnomalies(lastData, currentData) {
+    const anomalies = [];
+    const thresholds = {
+        temperature: 10, // 10°C ani değişim
+        humidity: 30,    // 30% ani değişim
+        weight: 5        // 5kg ani değişim
+    };
+
+    for (const [key, threshold] of Object.entries(thresholds)) {
+        if (lastData[key] && currentData[key]) {
+            const change = Math.abs(currentData[key] - lastData[key]);
+            if (change > threshold) {
+                anomalies.push({
+                    parameter: key,
+                    change: change,
+                    threshold: threshold,
+                    lastValue: lastData[key],
+                    currentValue: currentData[key]
+                });
+            }
+        }
+    }
+
+    return anomalies;
+}
 
     // Alert kontrolü (ML sonuçları dahil)
     async checkForAlerts(sensor, reading, mlResults = null) {
-        const alerts = [];
+    const alerts = [];
 
-        // 🧠 ML-based alerts (öncelik yüksek)
-        if (mlResults && mlResults.anomalyDetection && mlResults.anomalyDetection.is_anomaly) {
-            const mlAnomaly = mlResults.anomalyDetection;
+    // 🧠 ML-based alerts (öncelik yüksek)
+    if (mlResults && mlResults.anomalyDetection && mlResults.anomalyDetection.is_anomaly) {
+        const mlAnomaly = mlResults.anomalyDetection;
 
-            alerts.push({
-                type: 'ML_ANOMALY_DETECTED',
-                message: mlAnomaly.analysis?.summary || 'ML model anomaly detected',
-                severity: mlAnomaly.severity || 'medium',
-                confidence: mlAnomaly.confidence || 0.5,
-                method: 'machine_learning',
-                details: mlAnomaly.analysis?.details || []
-            });
-        }
+        alerts.push({
+            type: 'ML_ANOMALY_DETECTED',
+            message: mlAnomaly.analysis?.summary || 'ML model anomaly detected',
+            severity: mlAnomaly.severity || 'medium',
+            confidence: mlAnomaly.confidence || 0.5,
+            method: 'machine_learning',
+            details: mlAnomaly.analysis?.details || []
+        });
+    }
 
-        // 🧠 ML insights'lardan alerts
-        if (mlResults && mlResults.insights) {
-            mlResults.insights.forEach(insight => {
-                if (insight.severity === 'high' || insight.severity === 'critical') {
-                    alerts.push({
-                        type: 'ML_INSIGHT',
-                        message: insight.message,
-                        severity: insight.severity,
-                        confidence: insight.confidence || 0.7,
-                        method: 'ml_analysis'
-                    });
-                }
-            });
-        }
-
-        // 🧠 Trend-based alerts
-        if (mlResults && mlResults.trendPrediction && mlResults.trendPrediction.overall_analysis) {
-            const trendAnalysis = mlResults.trendPrediction.overall_analysis;
-
-            if (trendAnalysis.alerts && trendAnalysis.alerts.length > 0) {
-                trendAnalysis.alerts.forEach(alert => {
-                    alerts.push({
-                        type: 'TREND_ALERT',
-                        message: alert,
-                        severity: 'medium',
-                        method: 'trend_prediction'
-                    });
+    // 🧠 ML insights'lardan alerts
+    if (mlResults && mlResults.insights) {
+        mlResults.insights.forEach(insight => {
+            if (insight.severity === 'high' || insight.severity === 'critical') {
+                alerts.push({
+                    type: 'ML_INSIGHT',
+                    message: insight.message,
+                    severity: insight.severity,
+                    confidence: insight.confidence || 0.7,
+                    method: 'ml_analysis'
                 });
             }
-        }
+        });
+    }
 
-        // Klasik threshold-based alerts (backward compatibility)
-        // Sıcaklık kontrolü
-        if (reading.data.temperature) {
-            if (reading.data.temperature > 35) {
-                alerts.push({
-                    type: 'HIGH_TEMPERATURE',
-                    message: `Yüksek sıcaklık: ${reading.data.temperature}°C`,
-                    severity: 'critical',
-                    method: 'threshold'
-                });
-            } else if (reading.data.temperature < 10) {
-                alerts.push({
-                    type: 'LOW_TEMPERATURE',
-                    message: `Düşük sıcaklık: ${reading.data.temperature}°C`,
-                    severity: 'warning',
-                    method: 'threshold'
-                });
-            }
-        }
+    // 🧠 Trend-based alerts
+    if (mlResults && mlResults.trendPrediction && mlResults.trendPrediction.overall_analysis) {
+        const trendAnalysis = mlResults.trendPrediction.overall_analysis;
 
-        // Batarya kontrolü
-        if (reading.batteryLevel < 20) {
+        if (trendAnalysis.alerts && trendAnalysis.alerts.length > 0) {
+            trendAnalysis.alerts.forEach(alert => {
+                alerts.push({
+                    type: 'TREND_ALERT',
+                    message: alert,
+                    severity: 'medium',
+                    method: 'trend_prediction'
+                });
+            });
+        }
+    }
+
+    // Klasik threshold-based alerts (backward compatibility)
+    // Sıcaklık kontrolü
+    if (reading.data.temperature) {
+        if (reading.data.temperature > 35) {
             alerts.push({
-                type: 'LOW_BATTERY',
-                message: `Düşük batarya: %${reading.batteryLevel}`,
+                type: 'HIGH_TEMPERATURE',
+                message: `Yüksek sıcaklık: ${reading.data.temperature}°C`,
+                severity: 'critical',
+                method: 'threshold'
+            });
+        } else if (reading.data.temperature < 10) {
+            alerts.push({
+                type: 'LOW_TEMPERATURE',
+                message: `Düşük sıcaklık: ${reading.data.temperature}°C`,
                 severity: 'warning',
                 method: 'threshold'
             });
         }
+    }
 
-        // Klasik anomaly kontrolü
-        if (reading.metadata?.basicAnomalies?.some(a => a.parameter === 'weight')) {
-            alerts.push({
-                type: 'WEIGHT_ANOMALY',
-                message: 'Kovan ağırlığında ani değişim tespit edildi',
-                severity: 'info',
-                method: 'basic_anomaly'
+    // Batarya kontrolü
+    if (reading.batteryLevel < 20) {
+        alerts.push({
+            type: 'LOW_BATTERY',
+            message: `Düşük batarya: %${reading.batteryLevel}`,
+            severity: 'warning',
+            method: 'threshold'
+        });
+    }
+
+    // Klasik anomaly kontrolü
+    if (reading.metadata?.basicAnomalies?.some(a => a.parameter === 'weight')) {
+        alerts.push({
+            type: 'WEIGHT_ANOMALY',
+            message: 'Kovan ağırlığında ani değişim tespit edildi',
+            severity: 'info',
+            method: 'basic_anomaly'
+        });
+    }
+
+    // Alert'leri işle
+    for (const alert of alerts) {
+        console.log(`🚨 Alert: ${alert.message}`);
+
+        // WebSocket ile alert gönder
+        if (this.io) {
+            this.io.emit('sensor-alert', {
+                deviceId: sensor.deviceId,
+                sensorName: sensor.name,
+                ownerId: sensor.ownerId,
+                ...alert,
+                timestamp: new Date()
             });
         }
-
-        // Alert'leri işle
-        for (const alert of alerts) {
-            console.log(`🚨 Alert: ${alert.message}`);
-
-            // WebSocket ile alert gönder
-            if (this.io) {
-                this.io.emit('sensor-alert', {
-                    deviceId: sensor.deviceId,
-                    sensorName: sensor.name,
-                    ownerId: sensor.ownerId,
-                    ...alert,
-                    timestamp: new Date()
-                });
-            }
-        }
     }
+}
 
-    // LoRa payload'ını parse et
-    parseLoRaPayload(rawData) {
-        // LoRa gateway'den gelen format'a göre ayarla
-        // Örnek format:
-        try {
-            // HEX string'i parse et
-            if (typeof rawData === 'string') {
-                // TEXT format: "RID:107; SID:1013; WT: 25.62"
-                if (rawData.includes('RID:') && rawData.includes('SID:')) {
-                    return this.parseTextFormat(rawData);
-                }
-
-                // BT format: "BT001:25.5,65.2,45.8:85:-65"
-                // COORD format: "COORD_001:26.5,67.2,46.8,0.87:88:-68"
-                const [deviceId, sensorValues, battery, rssi] = rawData.split(':');
-                const sensorParts = sensorValues.split(',');
-
-                let sensorData;
-                if (sensorParts.length === 3) {
-                    // BT format (3 değer)
-                    const [temperature, humidity, weight] = sensorParts;
-                    sensorData = {
-                        temperature: parseFloat(temperature),
-                        humidity: parseFloat(humidity),
-                        weight: parseFloat(weight)
-                    };
-                } else if (sensorParts.length === 4) {
-                    // COORD format (4 değer)
-                    const [temperature, humidity, weight, gasLevel] = sensorParts;
-                    sensorData = {
-                        temperature: parseFloat(temperature),
-                        humidity: parseFloat(humidity),
-                        weight: parseFloat(weight),
-                        gasLevel: parseFloat(gasLevel)
-                    };
-                } else {
-                    console.error('❌ Invalid sensor data format:', sensorValues);
-                    return null;
-                }
-
-                return {
-                    deviceId: deviceId,
-                    sensorData: sensorData,
-                    batteryLevel: parseInt(battery),
-                    rssi: parseInt(rssi)
-                };
+// LoRa payload'ını parse et
+parseLoRaPayload(rawData) {
+    // LoRa gateway'den gelen format'a göre ayarla
+    // Örnek format:
+    try {
+        // HEX string'i parse et
+        if (typeof rawData === 'string') {
+            // TEXT format: "RID:107; SID:1013; WT: 25.62"
+            if (rawData.includes('RID:') && rawData.includes('SID:')) {
+                return this.parseTextFormat(rawData);
             }
 
-            // JSON format
-            if (typeof rawData === 'object') {
-                return {
-                    deviceId: rawData.device_id,
-                    sensorData: rawData.payload,
-                    batteryLevel: rawData.battery,
-                    rssi: rawData.rssi
+            // BT format: "BT001:25.5,65.2,45.8:85:-65"
+            // COORD format: "COORD_001:26.5,67.2,46.8,0.87:88:-68"
+            const [deviceId, sensorValues, battery, rssi] = rawData.split(':');
+            const sensorParts = sensorValues.split(',');
+
+            let sensorData;
+            if (sensorParts.length === 3) {
+                // BT format (3 değer)
+                const [temperature, humidity, weight] = sensorParts;
+                sensorData = {
+                    temperature: parseFloat(temperature),
+                    humidity: parseFloat(humidity),
+                    weight: parseFloat(weight)
                 };
-            }
-
-        } catch (error) {
-            console.error('❌ Payload parse error:', error);
-            throw error;
-        }
-    }
-
-    // Text format parse: "RID:107; SID:1013; WT: 25.62"
-    parseTextFormat(rawData) {
-        try {
-            console.log('🔄 Parsing text format:', rawData);
-
-            // RID:107; SID:1013; WT: 25.62 parse et
-            const parts = rawData.trim().split(';');
-
-            if (parts.length !== 3) {
-                console.error('❌ Invalid text format parts count:', parts.length);
+            } else if (sensorParts.length === 4) {
+                // COORD format (4 değer)
+                const [temperature, humidity, weight, gasLevel] = sensorParts;
+                sensorData = {
+                    temperature: parseFloat(temperature),
+                    humidity: parseFloat(humidity),
+                    weight: parseFloat(weight),
+                    gasLevel: parseFloat(gasLevel)
+                };
+            } else {
+                console.error('❌ Invalid sensor data format:', sensorValues);
                 return null;
             }
 
-            // RID parse et
-            const ridPart = parts[0].trim(); // "RID:107"
-            const routerId = ridPart.split(':')[1].trim(); // "107"
-
-            // SID parse et
-            const sidPart = parts[1].trim(); // " SID:1013"
-            const sensorId = sidPart.split(':')[1].trim(); // "1013"
-
-            // Data parse et
-            const dataPart = parts[2].trim(); // " WT: 25.62"
-            const dataKeyValue = dataPart.split(':');
-            const dataKey = dataKeyValue[0].trim(); // "WT"
-            const dataValue = parseFloat(dataKeyValue[1].trim()); // 25.62
-
-            // Data key mapping
-            const dataKeyMap = {
-                'WT': 'temperature',  // Weight/Temperature
-                'WH': 'humidity',     // Weight/Humidity 
-                'PR': 'pressure',     // Pressure
-                'AL': 'altitude',     // Altitude
-                'CO': 'co',           // Carbon Monoxide
-                'NO': 'no',           // Nitrogen Oxide
-                'WG': 'weight',       // Weight
-                'VB': 'vibration',    // Vibration
-                'SD': 'sound',        // Sound
-                'LT': 'light',        // Light
-                'UV': 'uv',           // UV
-                'PH': 'ph',           // pH
-                'MS': 'moisture'      // Moisture
-            };
-
-            const sensorType = dataKeyMap[dataKey] || dataKey.toLowerCase();
-
-            console.log('✅ Text format parsed:');
-            console.log(`   Router ID: ${routerId}`);
-            console.log(`   Sensor ID: ${sensorId}`);
-            console.log(`   Data: ${sensorType} = ${dataValue}`);
-
-            // LoRaProcessor formatına çevir
-            const sensorData = {};
-            sensorData[sensorType] = dataValue;
-
             return {
-                deviceId: `BT${routerId}`, // BT107 format için
-                routerId: routerId,
-                sensorId: sensorId,
+                deviceId: deviceId,
                 sensorData: sensorData,
-                batteryLevel: 85, // Default değer (text format'ta yok)
-                rssi: -65         // Default değer (text format'ta yok)
+                batteryLevel: parseInt(battery),
+                rssi: parseInt(rssi)
             };
+        }
 
-        } catch (error) {
-            console.error('❌ Text format parse error:', error);
+        // JSON format
+        if (typeof rawData === 'object') {
+            return {
+                deviceId: rawData.device_id,
+                sensorData: rawData.payload,
+                batteryLevel: rawData.battery,
+                rssi: rawData.rssi
+            };
+        }
+
+    } catch (error) {
+        console.error('❌ Payload parse error:', error);
+        throw error;
+    }
+}
+
+// Text format parse: "RID:107; SID:1013; WT: 25.62"
+parseTextFormat(rawData) {
+    try {
+        console.log('🔄 Parsing text format:', rawData);
+
+        // RID:107; SID:1013; WT: 25.62 parse et
+        const parts = rawData.trim().split(';');
+
+        if (parts.length !== 3) {
+            console.error('❌ Invalid text format parts count:', parts.length);
             return null;
         }
+
+        // RID parse et
+        const ridPart = parts[0].trim(); // "RID:107"
+        const routerId = ridPart.split(':')[1].trim(); // "107"
+
+        // SID parse et
+        const sidPart = parts[1].trim(); // " SID:1013"
+        const sensorId = sidPart.split(':')[1].trim(); // "1013"
+
+        // Data parse et
+        const dataPart = parts[2].trim(); // " WT: 25.62"
+        const dataKeyValue = dataPart.split(':');
+        const dataKey = dataKeyValue[0].trim(); // "WT"
+        const dataValue = parseFloat(dataKeyValue[1].trim()); // 25.62
+
+        // Data key mapping
+        const dataKeyMap = {
+            'WT': 'temperature',  // Weight/Temperature
+            'WH': 'humidity',     // Weight/Humidity 
+            'PR': 'pressure',     // Pressure
+            'AL': 'altitude',     // Altitude
+            'CO': 'co',           // Carbon Monoxide
+            'NO': 'no',           // Nitrogen Oxide
+            'WG': 'weight',       // Weight
+            'VB': 'vibration',    // Vibration
+            'SD': 'sound',        // Sound
+            'LT': 'light',        // Light
+            'UV': 'uv',           // UV
+            'PH': 'ph',           // pH
+            'MS': 'moisture'      // Moisture
+        };
+
+        const sensorType = dataKeyMap[dataKey] || dataKey.toLowerCase();
+
+        console.log('✅ Text format parsed:');
+        console.log(`   Router ID: ${routerId}`);
+        console.log(`   Sensor ID: ${sensorId}`);
+        console.log(`   Data: ${sensorType} = ${dataValue}`);
+
+        // LoRaProcessor formatına çevir
+        const sensorData = {};
+        sensorData[sensorType] = dataValue;
+
+        return {
+            deviceId: `BT${routerId}`, // BT107 format için
+            routerId: routerId,
+            sensorId: sensorId,
+            sensorData: sensorData,
+            batteryLevel: 85, // Default değer (text format'ta yok)
+            rssi: -65         // Default değer (text format'ta yok)
+        };
+
+    } catch (error) {
+        console.error('❌ Text format parse error:', error);
+        return null;
     }
+}
 }
 
 module.exports = LoRaDataProcessor;

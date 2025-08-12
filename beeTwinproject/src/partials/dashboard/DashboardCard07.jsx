@@ -14,7 +14,7 @@ import { useAuth } from '../../contexts/AuthContext';
  * - Gerçek zamanlı veri akışı
  * - Interactive chart görünümü
  * 
- * Veri Kaynağı: Backend /api/sensors/router/107/latest ve /api/sensors/router/108/latest
+ * Veri Kaynağı: Backend /api/sensors/router/107/history ve /api/sensors/router/108/history
  */
 
 function DashboardCard07() {
@@ -32,7 +32,15 @@ function DashboardCard07() {
       no2: [],
       timestamps: []
     },
-    lastUpdate: null
+    lastUpdate: null,
+    connectionStatus: {
+      bt107: 'disconnected',
+      bt108: 'disconnected'
+    },
+    dataAge: {
+      bt107: null,
+      bt108: null
+    }
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -46,68 +54,116 @@ function DashboardCard07() {
       try {
         setError(null);
         const token = localStorage.getItem('token');
-        
-        // BT107 ve BT108 verilerini paralel çek
+
+        console.log('📈 Card07 trend verileri alınıyor...');
+
+        // BT107 ve BT108 için zamansal veriler çek (6 saatlik)
         const [bt107Response, bt108Response] = await Promise.all([
-          fetch('http://localhost:5000/api/sensors/router/107/latest', {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
+          fetch(`http://localhost:5000/api/sensors/router/107/history?hours=6&limit=20`, {
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
           }),
-          fetch('http://localhost:5000/api/sensors/router/108/latest', {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
+          fetch(`http://localhost:5000/api/sensors/router/108/history?hours=6&limit=20`, {
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
           })
         ]);
 
-        const bt107Data = bt107Response.ok ? await bt107Response.json() : null;
-        const bt108Data = bt108Response.ok ? await bt108Response.json() : null;
-
         const now = new Date();
-        const timeLabel = now.toLocaleTimeString('tr-TR', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        });
+
+        // BT107 verilerini işle
+        let bt107Data = { temperature: [], humidity: [], pressure: [], timestamps: [] };
+        let bt107ConnectionStatus = 'disconnected';
+        let bt107DataAge = null;
+
+        if (bt107Response.ok) {
+          const bt107Result = await bt107Response.json();
+          if (bt107Result.success && bt107Result.data.readings.length > 0) {
+            const readings = bt107Result.data.readings;
+
+            // Verileri işle
+            bt107Data = {
+              temperature: readings.map(r => r.temperature).filter(v => v !== null),
+              humidity: readings.map(r => r.humidity).filter(v => v !== null),
+              pressure: readings.map(r => r.pressure ? r.pressure / 100 : null).filter(v => v !== null), // hPa'ya çevir
+              timestamps: readings.map(r => {
+                const date = new Date(r.timestamp);
+                return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+              })
+            };
+
+            // Bağlantı durumunu kontrol et
+            const latestReading = readings[readings.length - 1];
+            if (latestReading) {
+              const dataTime = new Date(latestReading.timestamp);
+              const ageMinutes = Math.round((now - dataTime) / 1000 / 60);
+              bt107DataAge = ageMinutes;
+
+              if (ageMinutes <= 5) bt107ConnectionStatus = 'live';
+              else if (ageMinutes <= 30) bt107ConnectionStatus = 'recent';
+              else if (ageMinutes <= 120) bt107ConnectionStatus = 'old';
+              else bt107ConnectionStatus = 'very_old';
+            }
+
+            console.log(`📊 BT107 trend veri: ${readings.length} kayıt, durum: ${bt107ConnectionStatus}`);
+          }
+        }
+
+        // BT108 verilerini işle
+        let bt108Data = { co: [], no2: [], timestamps: [] };
+        let bt108ConnectionStatus = 'disconnected';
+        let bt108DataAge = null;
+
+        if (bt108Response.ok) {
+          const bt108Result = await bt108Response.json();
+          if (bt108Result.success && bt108Result.data.readings.length > 0) {
+            const readings = bt108Result.data.readings;
+
+            bt108Data = {
+              co: readings.map(r => r.co).filter(v => v !== null),
+              no2: readings.map(r => r.no2).filter(v => v !== null),
+              timestamps: readings.map(r => {
+                const date = new Date(r.timestamp);
+                return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+              })
+            };
+
+            // Bağlantı durumunu kontrol et
+            const latestReading = readings[readings.length - 1];
+            if (latestReading) {
+              const dataTime = new Date(latestReading.timestamp);
+              const ageMinutes = Math.round((now - dataTime) / 1000 / 60);
+              bt108DataAge = ageMinutes;
+
+              if (ageMinutes <= 5) bt108ConnectionStatus = 'live';
+              else if (ageMinutes <= 30) bt108ConnectionStatus = 'recent';
+              else if (ageMinutes <= 120) bt108ConnectionStatus = 'old';
+              else bt108ConnectionStatus = 'very_old';
+            }
+
+            console.log(`📊 BT108 trend veri: ${readings.length} kayıt, durum: ${bt108ConnectionStatus}`);
+          }
+        }
 
         setTrendData(prevData => {
-          const newData = { ...prevData };
+          const newData = {
+            bt107: bt107Data,
+            bt108: bt108Data,
+            lastUpdate: now.toISOString(),
+            connectionStatus: {
+              bt107: bt107ConnectionStatus,
+              bt108: bt108ConnectionStatus
+            },
+            dataAge: {
+              bt107: bt107DataAge,
+              bt108: bt108DataAge
+            }
+          };
 
-          // BT107 verilerini ekle
-          if (bt107Data?.success && bt107Data.data) {
-            const data = bt107Data.data;
-            
-            // Maksimum 20 veri noktası tut (son 20 güncelleme)
-            const maxPoints = 20;
-            
-            if (data.temperature !== null && data.temperature !== undefined) {
-              newData.bt107.temperature = [...prevData.bt107.temperature, data.temperature].slice(-maxPoints);
-            }
-            if (data.humidity !== null && data.humidity !== undefined) {
-              newData.bt107.humidity = [...prevData.bt107.humidity, data.humidity].slice(-maxPoints);
-            }
-            if (data.pressure !== null && data.pressure !== undefined) {
-              newData.bt107.pressure = [...prevData.bt107.pressure, data.pressure].slice(-maxPoints);
-            }
-            newData.bt107.timestamps = [...prevData.bt107.timestamps, timeLabel].slice(-maxPoints);
-          }
+          console.log('📈 Card07 trend data updated:', {
+            bt107Points: newData.bt107.temperature.length,
+            bt108Points: newData.bt108.co.length,
+            lastUpdate: newData.lastUpdate
+          });
 
-          // BT108 verilerini ekle
-          if (bt108Data?.success && bt108Data.data) {
-            const data = bt108Data.data;
-            
-            if (data.co !== null && data.co !== undefined) {
-              newData.bt108.co = [...prevData.bt108.co, data.co].slice(-20);
-            }
-            if (data.no2 !== null && data.no2 !== undefined) {
-              newData.bt108.no2 = [...prevData.bt108.no2, data.no2].slice(-20);
-            }
-            newData.bt108.timestamps = [...prevData.bt108.timestamps, timeLabel].slice(-20);
-          }
-
-          newData.lastUpdate = now.toISOString();
           return newData;
         });
 
@@ -122,8 +178,8 @@ function DashboardCard07() {
     // İlk yükleme
     fetchTrendData();
 
-    // Her 30 saniyede bir güncelle (chart için yeterli)
-    const interval = setInterval(fetchTrendData, 30000);
+    // Her 2 dakikada bir güncelle (chart için uygun)
+    const interval = setInterval(fetchTrendData, 120000);
 
     return () => clearInterval(interval);
   }, [user]);
@@ -172,19 +228,19 @@ function DashboardCard07() {
     labels: trendData.bt108.timestamps,
     datasets: [
       {
-        label: 'CO (ppm)',
+        label: 'CO Seviyesi (ppm)',
         data: trendData.bt108.co,
-        borderColor: '#f97316',
-        backgroundColor: 'rgba(249, 115, 22, 0.1)',
+        borderColor: '#ef4444',
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
         borderWidth: 2,
         fill: false,
         tension: 0.4
       },
       {
-        label: 'NO2 (ppm)',
+        label: 'NO2 Seviyesi (ppb)',
         data: trendData.bt108.no2,
-        borderColor: '#ef4444',
-        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        borderColor: '#8b5cf6',
+        backgroundColor: 'rgba(139, 92, 246, 0.1)',
         borderWidth: 2,
         fill: false,
         tension: 0.4
@@ -192,55 +248,74 @@ function DashboardCard07() {
     ]
   });
 
-  // Chart options
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        display: true,
-        position: 'top'
-      }
-    },
-    scales: {
-      x: {
-        display: true,
-        title: {
-          display: true,
-          text: 'Zaman'
-        }
-      },
-      y: {
-        display: true,
-        title: {
-          display: true,
-          text: selectedView === 'temperature' ? 'Sıcaklık (°C)' :
-                selectedView === 'humidity' ? 'Nem (%)' :
-                selectedView === 'pressure' ? 'Basınç (hPa)' :
-                'Konsantrasyon (ppm)'
-        }
-      }
-    },
-    interaction: {
-      intersect: false,
-      mode: 'index'
+  // Seçili görünüm için chart data'sını döndür
+  const getCurrentChartData = () => {
+    switch (selectedView) {
+      case 'temperature':
+        return getTemperatureChartData();
+      case 'humidity':
+        return getHumidityChartData();
+      case 'pressure':
+        return getPressureChartData();
+      case 'air_quality':
+        return getAirQualityChartData();
+      default:
+        return getTemperatureChartData();
     }
   };
 
+  if (loading) {
+    return (
+      <div className="flex flex-col col-span-full xl:col-span-8 bg-white dark:bg-gray-800 shadow-xs rounded-xl border border-gray-200 dark:border-gray-700">
+        <div className="px-5 py-4 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">Trend verileri yükleniyor...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col col-span-full xl:col-span-8 bg-white dark:bg-gray-800 shadow-xs rounded-xl">
-      <div className="px-5 pt-5">
-        <header className="flex justify-between items-start mb-2">
+    <div className="flex flex-col col-span-full xl:col-span-8 bg-white dark:bg-gray-800 shadow-xs rounded-xl border border-gray-200 dark:border-gray-700">
+      <div className="px-5 py-4">
+        {/* Header */}
+        <header className="flex items-center justify-between mb-4">
           <div className="flex items-center">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-indigo-500/10 mr-3">
-              <span className="text-indigo-600 dark:text-indigo-400 text-2xl">📈</span>
-            </div>
             <div>
-              <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-1">
-                Router Veri Trendleri
+              <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-1 flex items-center gap-2">
+                📈 Sensör Veri Trendleri
+                {/* Bağlantı Durumu */}
+                {trendData.connectionStatus && (
+                  <div className="flex gap-1">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${trendData.connectionStatus.bt107 === 'live' ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400' :
+                      trendData.connectionStatus.bt107 === 'recent' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' :
+                        trendData.connectionStatus.bt107 === 'old' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400' :
+                          'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                      }`}>
+                      BT107: {
+                        trendData.connectionStatus.bt107 === 'live' ? `🟢 ${trendData.dataAge.bt107}dk` :
+                          trendData.connectionStatus.bt107 === 'recent' ? `🔵 ${trendData.dataAge.bt107}dk` :
+                            trendData.connectionStatus.bt107 === 'old' ? `🟡 ${trendData.dataAge.bt107}dk` :
+                              `🔴 ${trendData.dataAge.bt107}dk`
+                      }
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${trendData.connectionStatus.bt108 === 'live' ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400' :
+                      trendData.connectionStatus.bt108 === 'recent' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' :
+                        trendData.connectionStatus.bt108 === 'old' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400' :
+                          'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                      }`}>
+                      BT108: {
+                        trendData.connectionStatus.bt108 === 'live' ? `🟢 ${trendData.dataAge.bt108}dk` :
+                          trendData.connectionStatus.bt108 === 'recent' ? `🔵 ${trendData.dataAge.bt108}dk` :
+                            trendData.connectionStatus.bt108 === 'old' ? `🟡 ${trendData.dataAge.bt108}dk` :
+                              `🔴 ${trendData.dataAge.bt108}dk`
+                      }
+                    </span>
+                  </div>
+                )}
               </h2>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                BT107 & BT108 Gerçek Zamanlı Grafikler
+                BT107 & BT108 Zamansal Grafikler (6 Saatlik)
               </p>
             </div>
           </div>
@@ -250,114 +325,65 @@ function DashboardCard07() {
         <div className="flex flex-wrap gap-2 mb-4">
           <button
             onClick={() => setSelectedView('temperature')}
-            className={`px-3 py-1 text-xs rounded-md transition-colors ${
-              selectedView === 'temperature'
-                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
-                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
-            }`}
+            className={`px-3 py-1 text-xs rounded-md transition-colors ${selectedView === 'temperature'
+              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+              : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
           >
             🌡️ Sıcaklık
           </button>
           <button
             onClick={() => setSelectedView('humidity')}
-            className={`px-3 py-1 text-xs rounded-md transition-colors ${
-              selectedView === 'humidity'
-                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
-                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
-            }`}
+            className={`px-3 py-1 text-xs rounded-md transition-colors ${selectedView === 'humidity'
+              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
+              : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
           >
             💧 Nem
           </button>
           <button
             onClick={() => setSelectedView('pressure')}
-            className={`px-3 py-1 text-xs rounded-md transition-colors ${
-              selectedView === 'pressure'
-                ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
-            }`}
+            className={`px-3 py-1 text-xs rounded-md transition-colors ${selectedView === 'pressure'
+              ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+              : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
           >
             🌊 Basınç
           </button>
           <button
             onClick={() => setSelectedView('air_quality')}
-            className={`px-3 py-1 text-xs rounded-md transition-colors ${
-              selectedView === 'air_quality'
-                ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400'
-                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
-            }`}
+            className={`px-3 py-1 text-xs rounded-md transition-colors ${selectedView === 'air_quality'
+              ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400'
+              : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
           >
             🌬️ Hava Kalitesi
           </button>
         </div>
 
-        {/* Loading ve Error Durumu */}
-        {loading && (
-          <div className="flex items-center justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-            <span className="ml-3 text-gray-600 dark:text-gray-400">Grafik verisi yükleniyor...</span>
-          </div>
-        )}
-
-        {error && !loading && (
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-4">
-            <div className="flex items-center">
-              <div className="text-red-600 dark:text-red-400 mr-2 text-lg">⚠️</div>
-              <div>
-                <h3 className="text-red-800 dark:text-red-200 font-medium text-sm">
-                  Grafik Verisi Hatası
-                </h3>
-                <p className="text-red-700 dark:text-red-300 text-xs">{error}</p>
-              </div>
+        {/* Error Display */}
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <div className="flex items-center text-sm text-red-700 dark:text-red-400">
+              <span className="mr-2">⚠️</span>
+              {error}
             </div>
           </div>
         )}
 
-        {/* Chart Görünümü */}
-        {!loading && !error && (
-          <div className="h-64 mb-4">
-            {selectedView === 'temperature' && trendData.bt107.temperature.length > 0 && (
-              <LineChart data={getTemperatureChartData()} options={chartOptions} />
-            )}
-            {selectedView === 'humidity' && trendData.bt107.humidity.length > 0 && (
-              <LineChart data={getHumidityChartData()} options={chartOptions} />
-            )}
-            {selectedView === 'pressure' && trendData.bt107.pressure.length > 0 && (
-              <LineChart data={getPressureChartData()} options={chartOptions} />
-            )}
-            {selectedView === 'air_quality' && (trendData.bt108.co.length > 0 || trendData.bt108.no2.length > 0) && (
-              <LineChart data={getAirQualityChartData()} options={chartOptions} />
-            )}
-            
-            {/* Veri Yok Durumu */}
-            {((selectedView === 'temperature' && trendData.bt107.temperature.length === 0) ||
-              (selectedView === 'humidity' && trendData.bt107.humidity.length === 0) ||
-              (selectedView === 'pressure' && trendData.bt107.pressure.length === 0) ||
-              (selectedView === 'air_quality' && trendData.bt108.co.length === 0 && trendData.bt108.no2.length === 0)) && (
-              <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
-                <div className="text-center">
-                  <div className="text-4xl mb-2">📊</div>
-                  <p>Henüz grafik verisi yok</p>
-                  <p className="text-xs">Veriler gelmeye başladığında burada gösterilecek</p>
-                </div>
-              </div>
-            )}
+        {/* Chart */}
+        <div className="grow">
+          <div className="h-64">
+            <LineChart data={getCurrentChartData()} width={800} height={256} />
           </div>
-        )}
+        </div>
 
-        {/* İstatistikler */}
-        <div className="grid grid-cols-2 gap-4 text-xs">
-          <div>
-            <span className="block text-gray-500 dark:text-gray-400">Son Güncelleme</span>
-            <span className="text-gray-700 dark:text-gray-300">
-              {trendData.lastUpdate ? new Date(trendData.lastUpdate).toLocaleTimeString('tr-TR') : 'Henüz güncellenmedi'}
-            </span>
-          </div>
-          <div>
-            <span className="block text-gray-500 dark:text-gray-400">Veri Noktası</span>
-            <span className="text-gray-700 dark:text-gray-300">
-              {selectedView === 'air_quality' 
-                ? Math.max(trendData.bt108.co.length, trendData.bt108.no2.length)
-                : trendData.bt107[selectedView]?.length || 0} / 20
+        {/* Footer Info */}
+        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex justify-between items-center text-xs text-gray-500 dark:text-gray-400">
+            <span>Son Güncelleme: {trendData.lastUpdate ? new Date(trendData.lastUpdate).toLocaleTimeString('tr-TR') : '--:--'}</span>
+            <span>
+              Veri Noktaları: BT107({trendData.bt107.temperature.length}) BT108({trendData.bt108.co.length})
             </span>
           </div>
         </div>
